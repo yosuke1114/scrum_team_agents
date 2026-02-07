@@ -7,6 +7,7 @@ import type {
   Sprint,
   SprintMetrics,
   TaskState,
+  Priority,
 } from "../types.js";
 
 export async function sprintCreate(
@@ -110,12 +111,14 @@ export async function sprintComplete(
   // メトリクス計算
   const taskIds = s.currentSprint.tasks;
   const tasksByState: Partial<Record<TaskState, number>> = {};
+  const tasksByPriority: Partial<Record<Priority, number>> = {};
   let completedTasks = 0;
 
   for (const id of taskIds) {
     const task = s.tasks[id];
     if (task) {
       tasksByState[task.state] = (tasksByState[task.state] ?? 0) + 1;
+      tasksByPriority[task.priority] = (tasksByPriority[task.priority] ?? 0) + 1;
       if (task.state === "DONE") completedTasks++;
     }
   }
@@ -132,6 +135,7 @@ export async function sprintComplete(
     completedPoints: 0,
     completionRate,
     tasksByState,
+    tasksByPriority,
   };
 
   await store.update((s) => {

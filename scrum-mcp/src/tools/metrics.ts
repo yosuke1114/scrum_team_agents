@@ -57,6 +57,7 @@ export async function metricsReport(
     completedPoints: 0,
     completionRate,
     tasksByState,
+    tasksByPriority,
   };
 
   // サマリー文字列

@@ -128,6 +128,7 @@ export interface SprintMetrics {
   completedPoints: number;
   completionRate: number;
   tasksByState: Partial<Record<TaskState, number>>;
+  tasksByPriority: Partial<Record<Priority, number>>;
 }
 
 export interface WipStatus {

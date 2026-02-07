@@ -1,4 +1,4 @@
-import { readFile, writeFile, rename, unlink, mkdir } from "node:fs/promises";
+import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { ScrumState } from "../types.js";
 import { DEFAULT_STATE } from "../types.js";
