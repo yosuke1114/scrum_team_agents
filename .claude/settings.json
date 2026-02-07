@@ -1,0 +1,14 @@
+{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "mcpServers": {
+    "scrum-mcp": {
+      "command": "node",
+      "args": ["scrum-mcp/dist/index.js"],
+      "env": {
+        "SCRUM_STATE_FILE": ".scrum/state.json"
+      }
+    }
+  }
+}
