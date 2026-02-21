@@ -3,6 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 
 import { StateStore } from "./state/store.js";
+import { AuditLog } from "./state/audit.js";
 import { ceremonyStart, ceremonyEnd } from "./tools/ceremony.js";
 import { sprintCreate, sprintComplete } from "./tools/sprint.js";
 import { taskCreate, taskUpdate } from "./tools/task.js";
@@ -11,15 +12,34 @@ import { metricsReport } from "./tools/metrics.js";
 import { wipStatus } from "./tools/wip.js";
 import { listTasks, getTask, projectStatus } from "./tools/query.js";
 import { ceremonyReport } from "./tools/report.js";
+import { writeDashboard } from "./tools/dashboard.js";
 
 const STATE_FILE = process.env.SCRUM_STATE_FILE ?? ".scrum/state.json";
 
 const store = await StateStore.init(STATE_FILE);
+const audit = new AuditLog(STATE_FILE);
 
 const server = new McpServer({
   name: "scrum-mcp",
-  version: "0.1.0",
+  version: "0.2.0",
 });
+
+// --- Audit helper ---
+async function withAudit<T extends { ok: boolean; error?: string }>(
+  toolName: string,
+  input: Record<string, unknown>,
+  fn: () => Promise<T>
+): Promise<T> {
+  const result = await fn();
+  await audit.log({
+    ts: new Date().toISOString(),
+    tool: toolName,
+    input,
+    ok: result.ok,
+    error: result.error,
+  });
+  return result;
+}
 
 const ceremonyTypeSchema = z.enum([
   "refinement",
@@ -47,7 +67,9 @@ server.tool(
   "セレモニーを開始する",
   { type: ceremonyTypeSchema },
   async ({ type }) => {
-    const result = await ceremonyStart(store, { type });
+    const result = await withAudit("ceremony_start", { type }, () =>
+      ceremonyStart(store, { type })
+    );
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
@@ -60,7 +82,9 @@ server.tool(
   "セレモニーを終了する",
   { type: ceremonyTypeSchema },
   async ({ type }) => {
-    const result = await ceremonyEnd(store, { type });
+    const result = await withAudit("ceremony_end", { type }, () =>
+      ceremonyEnd(store, { type })
+    );
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
@@ -83,7 +107,9 @@ server.tool(
     ),
   },
   async ({ goal, tasks }) => {
-    const result = await sprintCreate(store, { goal, tasks });
+    const result = await withAudit("sprint_create", { goal, taskCount: tasks.length }, () =>
+      sprintCreate(store, { goal, tasks })
+    );
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
@@ -96,7 +122,9 @@ server.tool(
   "スプリントを完了する",
   { sprintId: z.string() },
   async ({ sprintId }) => {
-    const result = await sprintComplete(store, { sprintId });
+    const result = await withAudit("sprint_complete", { sprintId }, () =>
+      sprintComplete(store, { sprintId })
+    );
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
@@ -114,12 +142,9 @@ server.tool(
     priority: prioritySchema,
   },
   async ({ title, description, acceptanceCriteria, priority }) => {
-    const result = await taskCreate(store, {
-      title,
-      description,
-      acceptanceCriteria,
-      priority,
-    });
+    const result = await withAudit("task_create", { title, priority }, () =>
+      taskCreate(store, { title, description, acceptanceCriteria, priority })
+    );
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
@@ -136,7 +161,9 @@ server.tool(
     assignee: z.string().nullable().optional(),
   },
   async ({ taskId, state, assignee }) => {
-    const result = await taskUpdate(store, { taskId, state, assignee });
+    const result = await withAudit("task_update", { taskId, state, assignee }, () =>
+      taskUpdate(store, { taskId, state, assignee })
+    );
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
@@ -152,7 +179,9 @@ server.tool(
     action: z.enum(["create", "update", "close"]),
   },
   async ({ taskId, action }) => {
-    const result = await githubSync(store, { taskId, action });
+    const result = await withAudit("github_sync", { taskId, action }, () =>
+      githubSync(store, { taskId, action })
+    );
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
@@ -167,7 +196,9 @@ server.tool(
     sprintId: z.string().optional(),
   },
   async ({ sprintId }) => {
-    const result = await metricsReport(store, { sprintId });
+    const result = await withAudit("metrics_report", { sprintId }, () =>
+      metricsReport(store, { sprintId })
+    );
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
@@ -176,7 +207,9 @@ server.tool(
 
 // --- wip_status ---
 server.tool("wip_status", "WIP状態を確認する", {}, async () => {
-  const result = await wipStatus(store);
+  const result = await withAudit("wip_status", {}, () =>
+    wipStatus(store)
+  );
   return {
     content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
   };
@@ -193,7 +226,9 @@ server.tool(
     sprintId: z.string().optional(),
   },
   async ({ state, priority, assignee, sprintId }) => {
-    const result = await listTasks(store, { state, priority, assignee, sprintId });
+    const result = await withAudit("list_tasks", { state, priority, assignee, sprintId }, () =>
+      listTasks(store, { state, priority, assignee, sprintId })
+    );
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
@@ -206,7 +241,9 @@ server.tool(
   "タスクの詳細情報を取得する",
   { taskId: z.string() },
   async ({ taskId }) => {
-    const result = await getTask(store, { taskId });
+    const result = await withAudit("get_task", { taskId }, () =>
+      getTask(store, { taskId })
+    );
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
@@ -215,7 +252,13 @@ server.tool(
 
 // --- project_status ---
 server.tool("project_status", "プロジェクト全体の状況を取得する", {}, async () => {
-  const result = await projectStatus(store);
+  const result = await withAudit("project_status", {}, () =>
+    projectStatus(store)
+  );
+  // ダッシュボードファイルも更新
+  if (result.ok && result.message) {
+    await writeDashboard(STATE_FILE, result.message);
+  }
   return {
     content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
   };
@@ -239,7 +282,9 @@ server.tool(
     content: z.string(),
   },
   async ({ type, content }) => {
-    const result = await ceremonyReport(store, { type, content });
+    const result = await withAudit("ceremony_report", { type }, () =>
+      ceremonyReport(store, { type, content })
+    );
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
