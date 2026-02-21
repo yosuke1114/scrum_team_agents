@@ -42,6 +42,7 @@ export interface Sprint {
   state: SprintState;
   startedAt: string | null;
   completedAt: string | null;
+  metrics?: SprintMetrics;
 }
 
 export interface WipLimits {

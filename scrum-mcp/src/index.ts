@@ -207,7 +207,7 @@ server.tool(
     description: z.string(),
     acceptanceCriteria: z.array(z.string()),
     priority: prioritySchema,
-    points: z.number().optional(),
+    points: z.number().min(0).optional(),
   },
   async ({ title, description, acceptanceCriteria, priority, points }) => {
     const result = await withAudit("task_create", { title, priority, points }, () =>
@@ -227,7 +227,7 @@ server.tool(
     taskId: z.string(),
     state: taskStateSchema.optional(),
     priority: prioritySchema.optional(),
-    points: z.number().optional(),
+    points: z.number().min(0).optional(),
     assignee: z.string().nullable().optional(),
   },
   async ({ taskId, state, priority, points, assignee }) => {

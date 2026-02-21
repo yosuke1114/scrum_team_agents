@@ -568,15 +568,15 @@ describe("机上10スプリント回転", () => {
     expect(store.peek().sprints.filter((s) => s.state === "CANCELLED")).toHaveLength(2);
 
     // 各スプリントのポイント確認
-    // ※ velocityReport はタスクの「現在の」状態を見るため、
-    //   後のスプリントで完了したタスクも遡及的に DONE としてカウントされる
+    // H1 改善: velocityReport はスプリント完了時のスナップショットを使用
+    // 後のスプリントで完了したタスクは遡及カウントされない
     const expectedPoints = [
       { id: "sprint-1", pts: 16 },    // 全完了
-      { id: "sprint-2", pts: 18 },    // s2t3,s2t4 は Sprint 4 で完了 → 遡及的に全DONE
+      { id: "sprint-2", pts: 8 },     // 完了時点: s2t1,s2t2 のみ DONE (8pt/18pt)
       { id: "sprint-4", pts: 21 },    // 全完了
       { id: "sprint-5", pts: 12 },    // 全完了
       { id: "sprint-6", pts: 13 },    // 全完了
-      { id: "sprint-7", pts: 15 },    // s7t3 は Sprint 10 で完了 → 遡及的に全DONE
+      { id: "sprint-7", pts: 13 },    // 完了時点: s7t3 は BACKLOG (13pt/15pt)
       { id: "sprint-8", pts: 0 },     // ポイントなし
       { id: "sprint-10", pts: 13 },   // 全完了
     ];
@@ -642,11 +642,12 @@ describe("机上10スプリント回転", () => {
     const finalStatus = await projectStatus(store);
     expect(finalStatus.ok).toBe(true);
     expect(finalStatus.message).toContain("完了スプリント数: 8");
-
-    // M2: ポイント情報が含まれること
-    const fsData = finalStatus.data as { backlog: { totalPoints: number } };
+    // L4: キャンセル済みスプリント数
+    expect(finalStatus.message).toContain("中止: 2");
+    const fsData = finalStatus.data as { backlog: { totalPoints: number }; cancelledSprints: number };
     expect(fsData.backlog).toHaveProperty("totalPoints");
-    console.log(`  project_status: OK (完了スプリント数=8)\n`);
+    expect(fsData.cancelledSprints).toBe(2);
+    console.log(`  project_status: OK (完了=8, 中止=2)\n`);
 
     console.log("╔═══════════════════════════════════════════════════╗");
     console.log("║  10スプリント机上回転 完了                       ║");

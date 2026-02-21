@@ -280,4 +280,83 @@ describe("sprint_cancel", () => {
     const result = await sprintCancel(store, { sprintId: "sprint-1", reason: "テスト" });
     expect(result.ok).toBe(false);
   });
+
+  it("H2: BACKLOG タスクはキャンセル時に READY に戻さない", async () => {
+    const ids = await createReadyTasks(3);
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: ids });
+    await store.update((s) => {
+      if (s.currentSprint) {
+        s.currentSprint.state = "ACTIVE";
+        s.currentSprint.startedAt = new Date().toISOString();
+      }
+      // 1つを IN_PROGRESS、1つを BACKLOG に降格
+      s.tasks[ids[0]].state = "IN_PROGRESS";
+      s.tasks[ids[2]].state = "BACKLOG";
+    });
+
+    const result = await sprintCancel(store, { sprintId: "sprint-1", reason: "テスト" });
+    expect(result.ok).toBe(true);
+
+    // IN_PROGRESS と TODO は READY に戻る
+    expect(store.getState().tasks[ids[0]].state).toBe("READY");
+    expect(store.getState().tasks[ids[1]].state).toBe("READY");
+    // BACKLOG は保持される
+    expect(store.getState().tasks[ids[2]].state).toBe("BACKLOG");
+  });
+
+  it("M1: 任意のセレモニー中でもキャンセルでクリアされる", async () => {
+    const ids = await createReadyTasks(1);
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: ids });
+    await store.update((s) => {
+      if (s.currentSprint) {
+        s.currentSprint.state = "ACTIVE";
+        s.currentSprint.startedAt = new Date().toISOString();
+      }
+      // review セレモニー中を模擬
+      s.currentCeremony = "review";
+      s.ceremonyState = "SPRINT_REVIEW";
+    });
+
+    const result = await sprintCancel(store, { sprintId: "sprint-1", reason: "テスト" });
+    expect(result.ok).toBe(true);
+    expect(store.getState().currentCeremony).toBeNull();
+    expect(store.getState().ceremonyState).toBe("IDLE");
+  });
+});
+
+describe("sprint_complete メトリクス", () => {
+  it("H1: 完了時にメトリクススナップショットが保存される", async () => {
+    const ids = await createReadyTasks(2, { points: 5 });
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: ids });
+    await store.update((s) => {
+      if (s.currentSprint) {
+        s.currentSprint.state = "ACTIVE";
+        s.currentSprint.startedAt = new Date().toISOString();
+      }
+      s.tasks[ids[0]].state = "DONE";
+    });
+
+    await sprintComplete(store, { sprintId: "sprint-1" });
+    const sprint = store.getState().sprints[0];
+    expect(sprint.metrics).toBeDefined();
+    expect(sprint.metrics!.completedTasks).toBe(1);
+    expect(sprint.metrics!.completedPoints).toBe(5);
+    expect(sprint.metrics!.totalPoints).toBe(10);
+    expect(sprint.metrics!.completionRate).toBe(50);
+  });
+
+  it("H3: review セレモニーなしで完了すると警告が出る", async () => {
+    const ids = await createReadyTasks(1);
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: ids });
+    await store.update((s) => {
+      if (s.currentSprint) {
+        s.currentSprint.state = "ACTIVE";
+        s.currentSprint.startedAt = new Date().toISOString();
+      }
+    });
+
+    const result = await sprintComplete(store, { sprintId: "sprint-1" });
+    expect(result.ok).toBe(true);
+    expect(result.message).toContain("review セレモニーが開始されていません");
+  });
 });

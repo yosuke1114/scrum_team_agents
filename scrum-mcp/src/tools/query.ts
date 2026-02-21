@@ -136,6 +136,7 @@ interface ProjectStatusData {
   wip: { inProgress: number; inReview: number; limits: { inProgress: number; inReview: number } };
   blockers: Array<{ id: string; title: string; assignee: string | null }>;
   sprintHistory: number;
+  cancelledSprints: number;
 }
 
 export async function projectStatus(
@@ -207,6 +208,7 @@ export async function projectStatus(
     wip: { inProgress, inReview, limits: { ...s.wipLimits } },
     blockers,
     sprintHistory: s.sprints.length,
+    cancelledSprints: s.sprints.filter((sp) => sp.state === "CANCELLED").length,
   };
 
   // サマリー
@@ -243,7 +245,9 @@ export async function projectStatus(
     );
   }
 
-  lines.push("", `📈 完了スプリント数: ${s.sprints.filter((sp) => sp.state === "COMPLETED").length}`);
+  const completedCount = s.sprints.filter((sp) => sp.state === "COMPLETED").length;
+  const cancelledCount = s.sprints.filter((sp) => sp.state === "CANCELLED").length;
+  lines.push("", `📈 完了スプリント数: ${completedCount}${cancelledCount > 0 ? ` | 中止: ${cancelledCount}` : ""}`);
 
   return {
     ok: true,

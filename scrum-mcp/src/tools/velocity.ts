@@ -22,6 +22,20 @@ export async function velocityReport(
   const targetSprints = completedSprints.slice(-lastN);
 
   const sprintData = targetSprints.map((sp) => {
+    // メトリクススナップショットがあればそれを使用（正確な完了時点の値）
+    if (sp.metrics) {
+      return {
+        id: sp.id,
+        number: sp.number,
+        goal: sp.goal,
+        completedPoints: sp.metrics.completedPoints,
+        totalPoints: sp.metrics.totalPoints,
+        completedTasks: sp.metrics.completedTasks,
+        totalTasks: sp.metrics.totalTasks,
+      };
+    }
+
+    // フォールバック: スナップショットがない旧スプリント向け
     let completedPoints = 0;
     let totalPoints = 0;
     let completedTasks = 0;

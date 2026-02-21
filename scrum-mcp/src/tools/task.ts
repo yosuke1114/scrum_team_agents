@@ -12,6 +12,10 @@ export async function taskCreate(
   store: StateStore,
   input: TaskCreateInput
 ): Promise<ToolResult> {
+  if (input.points !== undefined && input.points < 0) {
+    return { ok: false, error: "ポイントは0以上の値を指定してください。" };
+  }
+
   const taskId = `task-${randomUUID()}`;
   const now = new Date().toISOString();
 
@@ -53,6 +57,11 @@ export async function taskUpdate(
       ok: false,
       error: `タスク「${input.taskId}」が見つかりません。`,
     };
+  }
+
+  // ポイントバリデーション
+  if (input.points !== undefined && input.points < 0) {
+    return { ok: false, error: "ポイントは0以上の値を指定してください。" };
   }
 
   // 更新フィールドチェック

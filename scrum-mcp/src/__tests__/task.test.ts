@@ -236,4 +236,36 @@ describe("task_update", () => {
     expect(result.ok).toBe(false);
     expect(result.error).toContain("更新");
   });
+
+  it("M6: 負のポイントでエラー", async () => {
+    const taskId = await createTestTask();
+    const result = await taskUpdate(store, { taskId, points: -3 });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("0以上");
+  });
+});
+
+describe("task_create バリデーション", () => {
+  it("M6: 負のポイントで作成できない", async () => {
+    const result = await taskCreate(store, {
+      title: "Test",
+      description: "desc",
+      acceptanceCriteria: [],
+      priority: "medium",
+      points: -1,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("0以上");
+  });
+
+  it("0ポイントで作成できる", async () => {
+    const result = await taskCreate(store, {
+      title: "Zero pts",
+      description: "desc",
+      acceptanceCriteria: [],
+      priority: "medium",
+      points: 0,
+    });
+    expect(result.ok).toBe(true);
+  });
 });

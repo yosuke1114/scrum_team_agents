@@ -212,12 +212,19 @@ export async function sprintComplete(
     tasksByPriority,
   };
 
+  // H3: review セレモニー実行中かの検証（ソフト警告）
+  let reviewWarning: string | undefined;
+  if (s.currentCeremony !== "review") {
+    reviewWarning = "⚠️ review セレモニーが開始されていません。sprint_complete → review → retro のフローを推奨します。";
+  }
+
   await store.update((s) => {
     if (s.currentSprint) {
       s.currentSprint.state = "COMPLETED";
       s.currentSprint.completedAt = new Date().toISOString();
+      s.currentSprint.metrics = metrics;
 
-      // H3: sprints[] 同期を先に実行（アーカイブ前の完了状態を記録）
+      // sprints[] 同期を先に実行（アーカイブ前の完了状態を記録）
       const idx = s.sprints.findIndex((sp) => sp.id === s.currentSprint!.id);
       if (idx >= 0) {
         s.sprints[idx] = {
@@ -237,9 +244,10 @@ export async function sprintComplete(
     }
   });
 
+  const msg = `スプリント「${input.sprintId}」を完了しました。完了率: ${completionRate}%`;
   return {
     ok: true,
-    message: `スプリント「${input.sprintId}」を完了しました。完了率: ${completionRate}%`,
+    message: reviewWarning ? `${msg}\n${reviewWarning}` : msg,
     data: metrics,
   };
 }
@@ -361,16 +369,14 @@ export async function sprintCancel(
       s.currentSprint.state = "CANCELLED";
       s.currentSprint.completedAt = new Date().toISOString();
 
-      // H1: セレモニー状態クリーンアップ
-      if (s.currentCeremony === "sprint") {
-        s.currentCeremony = null;
-      }
+      // セレモニー状態クリーンアップ（任意のセレモニーをクリア）
+      s.currentCeremony = null;
       s.ceremonyState = "IDLE";
 
-      // H2: 作業中タスクを READY に戻す
+      // H2: 作業中タスクを READY に戻す（BACKLOG は明示的降格なので保持）
       for (const id of s.currentSprint.tasks) {
         const task = s.tasks[id];
-        if (task && task.state !== "DONE") {
+        if (task && task.state !== "DONE" && task.state !== "BACKLOG") {
           task.state = "READY";
           task.assignee = null;
           task.updatedAt = new Date().toISOString();
