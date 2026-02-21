@@ -7,6 +7,7 @@ export interface AuditEntry {
   input: Record<string, unknown>;
   ok: boolean;
   error?: string;
+  persona?: string;
 }
 
 export class AuditLog {

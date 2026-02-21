@@ -34,10 +34,25 @@ describe("task_create", () => {
     expect(taskIds).toHaveLength(1);
 
     const task = state.tasks[taskIds[0]];
+    expect(task.id).toMatch(/^task-[0-9a-f-]{36}$/);
     expect(task.state).toBe("BACKLOG");
     expect(task.priority).toBe("high");
     expect(task.acceptanceCriteria).toEqual(["Google ログイン", "GitHub ログイン"]);
     expect(task.assignee).toBeNull();
+    expect(task.points).toBeNull();
+  });
+
+  it("ポイント付きでタスクを作成できる", async () => {
+    const result = await taskCreate(store, {
+      title: "ポイント付き",
+      description: "desc",
+      acceptanceCriteria: [],
+      priority: "medium",
+      points: 5,
+    });
+    expect(result.ok).toBe(true);
+    const id = (result.data as { taskId: string }).taskId;
+    expect(store.getState().tasks[id].points).toBe(5);
   });
 
   it("複数タスクを作成できる", async () => {
@@ -179,5 +194,27 @@ describe("task_update", () => {
     const r3 = await taskUpdate(store, { taskId: ids[2], state: "IN_PROGRESS" });
     expect(r3.ok).toBe(true);
     expect(r3.message).toContain("WIP制限警告");
+  });
+
+  it("状態変更なしで優先度のみ更新できる", async () => {
+    const taskId = await createTestTask();
+    const result = await taskUpdate(store, { taskId, priority: "high" });
+    expect(result.ok).toBe(true);
+    expect(store.getState().tasks[taskId].priority).toBe("high");
+    expect(store.getState().tasks[taskId].state).toBe("BACKLOG");
+  });
+
+  it("状態変更なしでポイントのみ更新できる", async () => {
+    const taskId = await createTestTask();
+    const result = await taskUpdate(store, { taskId, points: 8 });
+    expect(result.ok).toBe(true);
+    expect(store.getState().tasks[taskId].points).toBe(8);
+  });
+
+  it("更新フィールドなしでエラー", async () => {
+    const taskId = await createTestTask();
+    const result = await taskUpdate(store, { taskId });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("更新");
   });
 });

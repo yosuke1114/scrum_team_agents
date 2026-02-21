@@ -16,7 +16,7 @@ export type TaskState =
 
 export type Priority = "high" | "medium" | "low";
 
-export type SprintState = "PLANNING" | "ACTIVE" | "COMPLETED";
+export type SprintState = "PLANNING" | "ACTIVE" | "COMPLETED" | "CANCELLED";
 
 // --- Core Models ---
 
@@ -27,6 +27,7 @@ export interface Task {
   acceptanceCriteria: string[];
   state: TaskState;
   priority: Priority;
+  points: number | null;
   assignee: string | null;
   githubIssueNumber: number | null;
   createdAt: string;
@@ -61,6 +62,7 @@ export interface ScrumState {
   currentSprint: Sprint | null;
   sprints: Sprint[];
   tasks: Record<string, Task>;
+  archivedTasks: Record<string, Task>;
   wipLimits: WipLimits;
   config: ScrumConfig;
 }
@@ -77,16 +79,26 @@ export interface CeremonyEndInput {
 
 export interface SprintCreateInput {
   goal: string;
-  tasks: Array<{
-    title: string;
-    description: string;
-    acceptanceCriteria: string[];
-    priority: Priority;
-  }>;
+  taskIds: string[];
+}
+
+export interface SprintAddTasksInput {
+  sprintId: string;
+  taskIds: string[];
 }
 
 export interface SprintCompleteInput {
   sprintId: string;
+}
+
+export interface SprintCarryOverInput {
+  sprintId: string;
+  taskIds?: string[];
+}
+
+export interface SprintCancelInput {
+  sprintId: string;
+  reason: string;
 }
 
 export interface TaskCreateInput {
@@ -94,11 +106,14 @@ export interface TaskCreateInput {
   description: string;
   acceptanceCriteria: string[];
   priority: Priority;
+  points?: number;
 }
 
 export interface TaskUpdateInput {
   taskId: string;
-  state: TaskState;
+  state?: TaskState;
+  priority?: Priority;
+  points?: number;
   assignee?: string | null;
 }
 
@@ -108,6 +123,14 @@ export interface GithubSyncInput {
 }
 
 export interface MetricsReportInput {
+  sprintId?: string;
+}
+
+export interface VelocityReportInput {
+  lastN?: number;
+}
+
+export interface WipStatusInput {
   sprintId?: string;
 }
 
@@ -136,6 +159,20 @@ export interface WipStatus {
   inReview: number;
   limits: WipLimits;
   warning?: string;
+}
+
+export interface VelocityData {
+  sprints: Array<{
+    id: string;
+    number: number;
+    goal: string;
+    completedPoints: number;
+    totalPoints: number;
+    completedTasks: number;
+    totalTasks: number;
+  }>;
+  averageVelocity: number;
+  averageCompletionRate: number;
 }
 
 // --- State Transition Maps (Constants) ---
@@ -185,6 +222,7 @@ export const DEFAULT_STATE: ScrumState = {
   currentSprint: null,
   sprints: [],
   tasks: {},
+  archivedTasks: {},
   wipLimits: { inProgress: 2, inReview: 1 },
   config: { githubRepo: "", projectName: "scrum-team" },
 };

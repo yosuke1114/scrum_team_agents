@@ -18,6 +18,8 @@ export class StateStore {
     try {
       const data = await readFile(filePath, "utf-8");
       state = JSON.parse(data) as ScrumState;
+      // Migration: 新フィールドのデフォルト値
+      if (!state.archivedTasks) state.archivedTasks = {};
     } catch {
       state = structuredClone(DEFAULT_STATE);
     }

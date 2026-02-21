@@ -15,6 +15,7 @@ export interface ListTasksInput {
   priority?: Priority;
   assignee?: string;
   sprintId?: string;
+  includeArchived?: boolean;
 }
 
 export async function listTasks(
@@ -23,6 +24,11 @@ export async function listTasks(
 ): Promise<ToolResult<Task[]>> {
   const s = store.peek();
   let tasks = Object.values(s.tasks);
+
+  // アーカイブ済みタスクを含める
+  if (input.includeArchived) {
+    tasks = [...tasks, ...Object.values(s.archivedTasks)];
+  }
 
   // sprintId フィルタ
   if (input.sprintId) {
@@ -35,6 +41,14 @@ export async function listTasks(
     }
     const sprintTaskIds = new Set(sprint.tasks);
     tasks = tasks.filter((t) => sprintTaskIds.has(t.id));
+
+    // スプリントフィルタ時は自動的にアーカイブも含める
+    if (!input.includeArchived) {
+      const archivedInSprint = Object.values(s.archivedTasks).filter(
+        (t) => sprintTaskIds.has(t.id)
+      );
+      tasks = [...tasks, ...archivedInSprint];
+    }
   }
 
   if (input.state) {
@@ -73,15 +87,19 @@ export async function getTask(
   input: GetTaskInput
 ): Promise<ToolResult<Task>> {
   const s = store.peek();
-  const task = s.tasks[input.taskId];
+  // tasks と archivedTasks の両方を検索
+  const task = s.tasks[input.taskId] ?? s.archivedTasks[input.taskId];
 
   if (!task) {
     return { ok: false, error: `タスク「${input.taskId}」が見つかりません。` };
   }
 
+  const isArchived = !s.tasks[input.taskId] && !!s.archivedTasks[input.taskId];
+
   const detail = [
-    `📋 ${task.id}: ${task.title}`,
+    `📋 ${task.id}: ${task.title}${isArchived ? " [アーカイブ済]" : ""}`,
     `状態: ${task.state} | 優先度: ${task.priority} | 担当: ${task.assignee ?? "未割当"}`,
+    `ポイント: ${task.points ?? "未設定"}`,
     `説明: ${task.description}`,
     "",
     "受入条件:",
@@ -150,9 +168,15 @@ export async function projectStatus(
     ready: allTasks.filter((t) => t.state === "READY").length,
   };
 
-  // WIP 情報
-  const inProgress = allTasks.filter((t) => t.state === "IN_PROGRESS").length;
-  const inReview = allTasks.filter((t) => t.state === "IN_REVIEW").length;
+  // WIP 情報（スプリントスコープ）
+  const sprintTaskIds = s.currentSprint
+    ? new Set(s.currentSprint.tasks)
+    : null;
+  const wipScopedTasks = sprintTaskIds
+    ? allTasks.filter((t) => sprintTaskIds.has(t.id))
+    : allTasks;
+  const inProgress = wipScopedTasks.filter((t) => t.state === "IN_PROGRESS").length;
+  const inReview = wipScopedTasks.filter((t) => t.state === "IN_REVIEW").length;
 
   // ブロッカー
   const blockers = allTasks

@@ -1,12 +1,34 @@
 import type { StateStore } from "../state/store.js";
-import type { ToolResult, WipStatus } from "../types.js";
+import type { ToolResult, WipStatus, WipStatusInput } from "../types.js";
 
-export async function wipStatus(store: StateStore): Promise<ToolResult<WipStatus>> {
+export async function wipStatus(
+  store: StateStore,
+  input?: WipStatusInput
+): Promise<ToolResult<WipStatus>> {
   const s = store.peek();
-  const allTasks = Object.values(s.tasks);
 
-  const inProgressTasks = allTasks.filter((t) => t.state === "IN_PROGRESS");
-  const inReviewTasks = allTasks.filter((t) => t.state === "IN_REVIEW");
+  // スプリントスコープの決定
+  let sprintTaskIds: Set<string> | null = null;
+  const sprintId = input?.sprintId;
+  if (sprintId) {
+    const sprint =
+      s.currentSprint?.id === sprintId
+        ? s.currentSprint
+        : s.sprints.find((sp) => sp.id === sprintId);
+    if (sprint) {
+      sprintTaskIds = new Set(sprint.tasks);
+    }
+  } else if (s.currentSprint) {
+    sprintTaskIds = new Set(s.currentSprint.tasks);
+  }
+
+  const allTasks = Object.values(s.tasks);
+  const scopedTasks = sprintTaskIds
+    ? allTasks.filter((t) => sprintTaskIds!.has(t.id))
+    : allTasks;
+
+  const inProgressTasks = scopedTasks.filter((t) => t.state === "IN_PROGRESS");
+  const inReviewTasks = scopedTasks.filter((t) => t.state === "IN_REVIEW");
 
   const inProgress = inProgressTasks.length;
   const inReview = inReviewTasks.length;

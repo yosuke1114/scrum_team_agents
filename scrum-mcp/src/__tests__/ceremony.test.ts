@@ -256,7 +256,7 @@ describe("ceremony_start 前提条件", () => {
     });
     const result = await ceremonyStart(store, { type: "retro" });
     expect(result.ok).toBe(false);
-    expect(result.error).toContain("アクティブまたは完了状態ではありません");
+    expect(result.error).toContain("アクティブ、完了、または中止状態ではありません");
   });
 
   it("sprint はスプリント未作成でエラー", async () => {

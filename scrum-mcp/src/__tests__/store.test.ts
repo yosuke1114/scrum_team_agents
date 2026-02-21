@@ -27,6 +27,7 @@ describe("StateStore", () => {
     expect(state.currentSprint).toBeNull();
     expect(state.sprints).toEqual([]);
     expect(state.tasks).toEqual({});
+    expect(state.archivedTasks).toEqual({});
     expect(state.wipLimits).toEqual({ inProgress: 2, inReview: 1 });
     expect(state.config).toEqual({ githubRepo: "", projectName: "scrum-team" });
   });
@@ -70,7 +71,7 @@ describe("StateStore", () => {
       s.tasks["t-1"] = {
         id: "t-1", title: "Task", description: "desc",
         acceptanceCriteria: ["AC1"], state: "BACKLOG", priority: "high",
-        assignee: null, githubIssueNumber: null,
+        assignee: null, githubIssueNumber: null, points: null,
         createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       };
     });

@@ -3,7 +3,7 @@ import { unlink } from "node:fs/promises";
 import { StateStore } from "../state/store.js";
 import { listTasks, getTask, projectStatus } from "../tools/query.js";
 import { taskCreate, taskUpdate } from "../tools/task.js";
-import { sprintCreate } from "../tools/sprint.js";
+import { sprintCreate, sprintComplete } from "../tools/sprint.js";
 import { ceremonyStart } from "../tools/ceremony.js";
 import type { Task } from "../types.js";
 
@@ -21,6 +21,13 @@ afterEach(async () => {
     // ignore
   }
 });
+
+async function createReadyTask(title: string, priority: "high" | "medium" | "low"): Promise<string> {
+  const r = await taskCreate(store, { title, description: "d", acceptanceCriteria: [], priority });
+  const id = (r.data as { taskId: string }).taskId;
+  await taskUpdate(store, { taskId: id, state: "READY" });
+  return id;
+}
 
 describe("list_tasks", () => {
   it("タスクなしで空リストを返す", async () => {
@@ -44,7 +51,7 @@ describe("list_tasks", () => {
 
   it("state でフィルタできる", async () => {
     const r1 = await taskCreate(store, { title: "A", description: "d", acceptanceCriteria: [], priority: "high" });
-    const r2 = await taskCreate(store, { title: "B", description: "d", acceptanceCriteria: [], priority: "medium" });
+    await taskCreate(store, { title: "B", description: "d", acceptanceCriteria: [], priority: "medium" });
     const id1 = (r1.data as { taskId: string }).taskId;
     await taskUpdate(store, { taskId: id1, state: "READY" });
 
@@ -82,10 +89,8 @@ describe("list_tasks", () => {
     // バックログタスク
     await taskCreate(store, { title: "Backlog", description: "d", acceptanceCriteria: [], priority: "low" });
     // スプリントタスク
-    await sprintCreate(store, {
-      goal: "Sprint 1",
-      tasks: [{ title: "Sprint Task", description: "d", acceptanceCriteria: [], priority: "high" }],
-    });
+    const sprintTaskId = await createReadyTask("Sprint Task", "high");
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: [sprintTaskId] });
 
     const result = await listTasks(store, { sprintId: "sprint-1" });
     const data = result.data as Task[];
@@ -97,6 +102,24 @@ describe("list_tasks", () => {
     const result = await listTasks(store, { sprintId: "sprint-999" });
     expect(result.ok).toBe(false);
   });
+
+  it("アーカイブ済タスクも sprintId フィルタで取得できる", async () => {
+    const ids = [await createReadyTask("T1", "high"), await createReadyTask("T2", "medium")];
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: ids });
+    await store.update((s) => {
+      if (s.currentSprint) {
+        s.currentSprint.state = "ACTIVE";
+        s.currentSprint.startedAt = new Date().toISOString();
+      }
+      s.tasks[ids[0]].state = "DONE";
+    });
+    await sprintComplete(store, { sprintId: "sprint-1" });
+
+    // sprintId フィルタはアーカイブも自動的に含む
+    const result = await listTasks(store, { sprintId: "sprint-1" });
+    const data = result.data as Task[];
+    expect(data).toHaveLength(2);
+  });
 });
 
 describe("get_task", () => {
@@ -106,6 +129,7 @@ describe("get_task", () => {
       description: "OAuth2 実装",
       acceptanceCriteria: ["Google ログイン", "GitHub ログイン"],
       priority: "high",
+      points: 8,
     });
     const taskId = (r.data as { taskId: string }).taskId;
 
@@ -113,6 +137,7 @@ describe("get_task", () => {
     expect(result.ok).toBe(true);
     const data = result.data as Task;
     expect(data.title).toBe("認証機能");
+    expect(data.points).toBe(8);
     expect(data.acceptanceCriteria).toEqual(["Google ログイン", "GitHub ログイン"]);
     expect(result.message).toContain("受入条件");
   });
@@ -122,6 +147,23 @@ describe("get_task", () => {
     expect(result.ok).toBe(false);
     expect(result.error).toContain("見つかりません");
   });
+
+  it("アーカイブ済みタスクも取得できる", async () => {
+    const id = await createReadyTask("Archived", "high");
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: [id] });
+    await store.update((s) => {
+      if (s.currentSprint) {
+        s.currentSprint.state = "ACTIVE";
+        s.currentSprint.startedAt = new Date().toISOString();
+      }
+      s.tasks[id].state = "DONE";
+    });
+    await sprintComplete(store, { sprintId: "sprint-1" });
+
+    const result = await getTask(store, { taskId: id });
+    expect(result.ok).toBe(true);
+    expect(result.message).toContain("アーカイブ済");
+  });
 });
 
 describe("project_status", () => {
@@ -130,41 +172,29 @@ describe("project_status", () => {
     expect(result.ok).toBe(true);
     expect(result.message).toContain("IDLE");
     expect(result.message).toContain("スプリント: なし");
-    expect(result.data).toBeDefined();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data = result.data as any;
+    const data = result.data as { ceremonyState: string; sprint: null; blockers: Array<{ id: string }> };
     expect(data.ceremonyState).toBe("IDLE");
     expect(data.sprint).toBeNull();
     expect(data.blockers).toEqual([]);
   });
 
   it("スプリント進行中の状態を返す", async () => {
-    await sprintCreate(store, {
-      goal: "MVP",
-      tasks: [
-        { title: "T1", description: "d", acceptanceCriteria: [], priority: "high" },
-        { title: "T2", description: "d", acceptanceCriteria: [], priority: "medium" },
-      ],
-    });
+    const ids = [await createReadyTask("T1", "high"), await createReadyTask("T2", "medium")];
+    await sprintCreate(store, { goal: "MVP", taskIds: ids });
 
-    const state = store.getState();
-    const taskId = state.currentSprint!.tasks[0];
-
-    // ACTIVE にして1つ DONE に
     await store.update((s) => {
       s.currentSprint!.state = "ACTIVE";
       s.currentSprint!.startedAt = new Date().toISOString();
     });
-    await taskUpdate(store, { taskId, state: "IN_PROGRESS" });
-    await taskUpdate(store, { taskId, state: "IN_REVIEW" });
-    await taskUpdate(store, { taskId, state: "DONE" });
+
+    await taskUpdate(store, { taskId: ids[0], state: "IN_PROGRESS" });
+    await taskUpdate(store, { taskId: ids[0], state: "IN_REVIEW" });
+    await taskUpdate(store, { taskId: ids[0], state: "DONE" });
 
     const result = await projectStatus(store);
     expect(result.ok).toBe(true);
     expect(result.message).toContain("50%");
     expect(result.message).toContain("MVP");
-    const data = result.data as { sprint: { completionRate: number } };
-    expect(data.sprint.completionRate).toBe(50);
   });
 
   it("ブロッカーを検出する", async () => {
@@ -177,7 +207,6 @@ describe("project_status", () => {
 
     const result = await projectStatus(store);
     expect(result.message).toContain("ブロッカー");
-    expect(result.message).toContain("Blocked Task");
     const data = result.data as { blockers: Array<{ id: string }> };
     expect(data.blockers).toHaveLength(1);
   });

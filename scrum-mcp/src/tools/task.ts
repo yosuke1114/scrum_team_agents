@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { StateStore } from "../state/store.js";
 import type {
   TaskCreateInput,
@@ -11,9 +12,7 @@ export async function taskCreate(
   store: StateStore,
   input: TaskCreateInput
 ): Promise<ToolResult> {
-  const s = store.peek();
-  const existingCount = Object.keys(s.tasks).length;
-  const taskId = `task-${existingCount + 1}-${Date.now().toString(36)}`;
+  const taskId = `task-${randomUUID()}`;
   const now = new Date().toISOString();
 
   const task: Task = {
@@ -23,6 +22,7 @@ export async function taskCreate(
     acceptanceCriteria: input.acceptanceCriteria,
     state: "BACKLOG",
     priority: input.priority,
+    points: input.points ?? null,
     assignee: null,
     githubIssueNumber: null,
     createdAt: now,
@@ -55,20 +55,40 @@ export async function taskUpdate(
     };
   }
 
-  // 状態遷移チェック
-  const validTargets = VALID_TASK_TRANSITIONS[task.state];
-  if (!validTargets.includes(input.state)) {
+  // 更新フィールドチェック
+  if (
+    input.state === undefined &&
+    input.priority === undefined &&
+    input.points === undefined &&
+    input.assignee === undefined
+  ) {
     return {
       ok: false,
-      error: `タスク状態「${task.state}」から「${input.state}」への遷移はできません。`,
+      error: "更新するフィールドがありません。",
     };
   }
 
-  // WIP 制限チェック（ソフト警告）
+  // 状態遷移チェック（state が指定され、かつ現在と異なる場合）
+  if (input.state && input.state !== task.state) {
+    const validTargets = VALID_TASK_TRANSITIONS[task.state];
+    if (!validTargets.includes(input.state)) {
+      return {
+        ok: false,
+        error: `タスク状態「${task.state}」から「${input.state}」への遷移はできません。`,
+      };
+    }
+  }
+
+  // WIP 制限チェック（スプリントスコープ）
   let warning: string | undefined;
   if (input.state === "IN_PROGRESS" || input.state === "IN_REVIEW") {
-    const allTasks = Object.values(s.tasks);
-    const count = allTasks.filter((t) => t.state === input.state).length;
+    const sprintTaskIds = s.currentSprint
+      ? new Set(s.currentSprint.tasks)
+      : null;
+    const tasksInScope = sprintTaskIds
+      ? Object.values(s.tasks).filter((t) => sprintTaskIds.has(t.id))
+      : Object.values(s.tasks);
+    const count = tasksInScope.filter((t) => t.state === input.state).length;
     const limit =
       input.state === "IN_PROGRESS"
         ? s.wipLimits.inProgress
@@ -82,19 +102,22 @@ export async function taskUpdate(
   await store.update((s) => {
     const t = s.tasks[input.taskId];
     if (t) {
-      t.state = input.state;
+      if (input.state) t.state = input.state;
+      if (input.priority !== undefined) t.priority = input.priority;
+      if (input.points !== undefined) t.points = input.points;
+      if (input.assignee !== undefined) t.assignee = input.assignee;
       t.updatedAt = new Date().toISOString();
-
-      // assignee: undefined=変更なし, null=担当解除, string=担当設定
-      if (input.assignee !== undefined) {
-        t.assignee = input.assignee;
-      }
     }
   });
 
+  const changes: string[] = [];
+  if (input.state) changes.push(`状態→${input.state}`);
+  if (input.priority !== undefined) changes.push(`優先度→${input.priority}`);
+  if (input.points !== undefined) changes.push(`ポイント→${input.points}`);
+
   const result: ToolResult = {
     ok: true,
-    message: `タスク「${input.taskId}」を「${input.state}」に更新しました。`,
+    message: `タスク「${input.taskId}」を更新しました。(${changes.join(", ") || "担当変更"})`,
   };
 
   if (warning) {

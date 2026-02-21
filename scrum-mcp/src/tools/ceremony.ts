@@ -78,11 +78,13 @@ export async function ceremonyStart(
   if (input.type === "retro") {
     if (
       !s.currentSprint ||
-      (s.currentSprint.state !== "ACTIVE" && s.currentSprint.state !== "COMPLETED")
+      (s.currentSprint.state !== "ACTIVE" &&
+        s.currentSprint.state !== "COMPLETED" &&
+        s.currentSprint.state !== "CANCELLED")
     ) {
       return {
         ok: false,
-        error: "スプリントがアクティブまたは完了状態ではありません。",
+        error: "スプリントがアクティブ、完了、または中止状態ではありません。",
       };
     }
   }

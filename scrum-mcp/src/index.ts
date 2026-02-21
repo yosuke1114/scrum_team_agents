@@ -5,7 +5,7 @@ import { z } from "zod";
 import { StateStore } from "./state/store.js";
 import { AuditLog } from "./state/audit.js";
 import { ceremonyStart, ceremonyEnd } from "./tools/ceremony.js";
-import { sprintCreate, sprintComplete } from "./tools/sprint.js";
+import { sprintCreate, sprintAddTasks, sprintComplete, sprintCarryOver, sprintCancel } from "./tools/sprint.js";
 import { taskCreate, taskUpdate } from "./tools/task.js";
 import { githubSync } from "./tools/github.js";
 import { metricsReport } from "./tools/metrics.js";
@@ -13,6 +13,7 @@ import { wipStatus } from "./tools/wip.js";
 import { listTasks, getTask, projectStatus } from "./tools/query.js";
 import { ceremonyReport } from "./tools/report.js";
 import { writeDashboard } from "./tools/dashboard.js";
+import { velocityReport } from "./tools/velocity.js";
 
 const STATE_FILE = process.env.SCRUM_STATE_FILE ?? ".scrum/state.json";
 
@@ -21,8 +22,11 @@ const audit = new AuditLog(STATE_FILE);
 
 const server = new McpServer({
   name: "scrum-mcp",
-  version: "0.2.0",
+  version: "0.3.0",
 });
+
+// --- Persona context ---
+let currentPersona: string | null = null;
 
 // --- Audit helper ---
 async function withAudit<T extends { ok: boolean; error?: string }>(
@@ -37,6 +41,7 @@ async function withAudit<T extends { ok: boolean; error?: string }>(
     input,
     ok: result.ok,
     error: result.error,
+    persona: currentPersona ?? undefined,
   });
   return result;
 }
@@ -60,6 +65,21 @@ const taskStateSchema = z.enum([
   "DONE",
   "BLOCKED",
 ]);
+
+// --- set_context ---
+server.tool(
+  "set_context",
+  "セッションコンテキスト（ペルソナ等）を設定する",
+  {
+    persona: z.string().optional(),
+  },
+  async ({ persona }) => {
+    currentPersona = persona ?? null;
+    return {
+      content: [{ type: "text", text: JSON.stringify({ ok: true, persona: currentPersona }) }],
+    };
+  }
+);
 
 // --- ceremony_start ---
 server.tool(
@@ -94,21 +114,32 @@ server.tool(
 // --- sprint_create ---
 server.tool(
   "sprint_create",
-  "スプリントを作成する",
+  "既存の READY タスクを選択してスプリントを作成する",
   {
     goal: z.string(),
-    tasks: z.array(
-      z.object({
-        title: z.string(),
-        description: z.string(),
-        acceptanceCriteria: z.array(z.string()),
-        priority: prioritySchema,
-      })
-    ),
+    taskIds: z.array(z.string()),
   },
-  async ({ goal, tasks }) => {
-    const result = await withAudit("sprint_create", { goal, taskCount: tasks.length }, () =>
-      sprintCreate(store, { goal, tasks })
+  async ({ goal, taskIds }) => {
+    const result = await withAudit("sprint_create", { goal, taskCount: taskIds.length }, () =>
+      sprintCreate(store, { goal, taskIds })
+    );
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
+// --- sprint_add_tasks ---
+server.tool(
+  "sprint_add_tasks",
+  "PLANNING 中のスプリントにタスクを追加する",
+  {
+    sprintId: z.string(),
+    taskIds: z.array(z.string()),
+  },
+  async ({ sprintId, taskIds }) => {
+    const result = await withAudit("sprint_add_tasks", { sprintId, taskCount: taskIds.length }, () =>
+      sprintAddTasks(store, { sprintId, taskIds })
     );
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
@@ -119,7 +150,7 @@ server.tool(
 // --- sprint_complete ---
 server.tool(
   "sprint_complete",
-  "スプリントを完了する",
+  "スプリントを完了する（DONE タスクは自動アーカイブ）",
   { sprintId: z.string() },
   async ({ sprintId }) => {
     const result = await withAudit("sprint_complete", { sprintId }, () =>
@@ -131,19 +162,56 @@ server.tool(
   }
 );
 
+// --- sprint_carry_over ---
+server.tool(
+  "sprint_carry_over",
+  "完了/中止スプリントの未完了タスクを READY に戻す（持ち越し）",
+  {
+    sprintId: z.string(),
+    taskIds: z.array(z.string()).optional(),
+  },
+  async ({ sprintId, taskIds }) => {
+    const result = await withAudit("sprint_carry_over", { sprintId, taskIds }, () =>
+      sprintCarryOver(store, { sprintId, taskIds })
+    );
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
+// --- sprint_cancel ---
+server.tool(
+  "sprint_cancel",
+  "スプリントを中止する",
+  {
+    sprintId: z.string(),
+    reason: z.string(),
+  },
+  async ({ sprintId, reason }) => {
+    const result = await withAudit("sprint_cancel", { sprintId, reason }, () =>
+      sprintCancel(store, { sprintId, reason })
+    );
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
 // --- task_create ---
 server.tool(
   "task_create",
-  "タスクを作成する",
+  "タスクを作成する（UUID ベースの一意 ID）",
   {
     title: z.string(),
     description: z.string(),
     acceptanceCriteria: z.array(z.string()),
     priority: prioritySchema,
+    points: z.number().optional(),
   },
-  async ({ title, description, acceptanceCriteria, priority }) => {
-    const result = await withAudit("task_create", { title, priority }, () =>
-      taskCreate(store, { title, description, acceptanceCriteria, priority })
+  async ({ title, description, acceptanceCriteria, priority, points }) => {
+    const result = await withAudit("task_create", { title, priority, points }, () =>
+      taskCreate(store, { title, description, acceptanceCriteria, priority, points })
     );
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
@@ -154,15 +222,17 @@ server.tool(
 // --- task_update ---
 server.tool(
   "task_update",
-  "タスクの状態を更新する",
+  "タスクの状態・優先度・ポイント・担当を更新する",
   {
     taskId: z.string(),
-    state: taskStateSchema,
+    state: taskStateSchema.optional(),
+    priority: prioritySchema.optional(),
+    points: z.number().optional(),
     assignee: z.string().nullable().optional(),
   },
-  async ({ taskId, state, assignee }) => {
-    const result = await withAudit("task_update", { taskId, state, assignee }, () =>
-      taskUpdate(store, { taskId, state, assignee })
+  async ({ taskId, state, priority, points, assignee }) => {
+    const result = await withAudit("task_update", { taskId, state, priority, points, assignee }, () =>
+      taskUpdate(store, { taskId, state, priority, points, assignee })
     );
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
@@ -191,7 +261,7 @@ server.tool(
 // --- metrics_report ---
 server.tool(
   "metrics_report",
-  "スプリントメトリクスを取得する",
+  "スプリントメトリクス（ポイント含む）を取得する",
   {
     sprintId: z.string().optional(),
   },
@@ -205,15 +275,39 @@ server.tool(
   }
 );
 
+// --- velocity_report ---
+server.tool(
+  "velocity_report",
+  "スプリント横断のベロシティレポートを取得する",
+  {
+    lastN: z.number().optional(),
+  },
+  async ({ lastN }) => {
+    const result = await withAudit("velocity_report", { lastN }, () =>
+      velocityReport(store, { lastN })
+    );
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
 // --- wip_status ---
-server.tool("wip_status", "WIP状態を確認する", {}, async () => {
-  const result = await withAudit("wip_status", {}, () =>
-    wipStatus(store)
-  );
-  return {
-    content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-  };
-});
+server.tool(
+  "wip_status",
+  "WIP状態を確認する（スプリントスコープ）",
+  {
+    sprintId: z.string().optional(),
+  },
+  async ({ sprintId }) => {
+    const result = await withAudit("wip_status", { sprintId }, () =>
+      wipStatus(store, { sprintId })
+    );
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
 
 // --- list_tasks ---
 server.tool(
@@ -224,10 +318,11 @@ server.tool(
     priority: prioritySchema.optional(),
     assignee: z.string().optional(),
     sprintId: z.string().optional(),
+    includeArchived: z.boolean().optional(),
   },
-  async ({ state, priority, assignee, sprintId }) => {
-    const result = await withAudit("list_tasks", { state, priority, assignee, sprintId }, () =>
-      listTasks(store, { state, priority, assignee, sprintId })
+  async ({ state, priority, assignee, sprintId, includeArchived }) => {
+    const result = await withAudit("list_tasks", { state, priority, assignee, sprintId, includeArchived }, () =>
+      listTasks(store, { state, priority, assignee, sprintId, includeArchived })
     );
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
@@ -238,7 +333,7 @@ server.tool(
 // --- get_task ---
 server.tool(
   "get_task",
-  "タスクの詳細情報を取得する",
+  "タスクの詳細情報を取得する（アーカイブ済みも検索）",
   { taskId: z.string() },
   async ({ taskId }) => {
     const result = await withAudit("get_task", { taskId }, () =>
