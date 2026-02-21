@@ -7,6 +7,7 @@ import type {
   ScrumState,
 } from "../types.js";
 import { CEREMONY_STATE_MAP, VALID_TRANSITIONS } from "../types.js";
+import { syncCurrentSprint } from "./sprint.js";
 
 function buildCeremonySummary(state: ScrumState): string {
   const parts: string[] = [];
@@ -103,10 +104,7 @@ export async function ceremonyStart(
       s.currentSprint.startedAt = new Date().toISOString();
 
       // sprints[] も同期コピー
-      const idx = s.sprints.findIndex((sp) => sp.id === s.currentSprint!.id);
-      if (idx >= 0) {
-        s.sprints[idx] = { ...s.currentSprint, tasks: [...s.currentSprint.tasks] };
-      }
+      syncCurrentSprint(s);
     }
   });
 
@@ -149,8 +147,10 @@ export async function ceremonyEnd(
     } else if (input.type === "refinement") {
       s.ceremonyState = "IDLE";
     }
-    // review → SPRINT_REVIEW のまま
-    // planning → PLANNING のまま
+    // ceremonyState はスプリントライフサイクルの「フェーズ」を表す。
+    // currentCeremony はその中で「今進行中のセレモニー」を表す。
+    // review 終了後も SPRINT_REVIEW フェーズは継続（retro に遷移するまで）。
+    // planning 終了後も PLANNING フェーズは継続（sprint に遷移するまで）。
   });
 
   return {

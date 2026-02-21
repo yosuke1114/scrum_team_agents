@@ -30,6 +30,7 @@ export interface Task {
   points: number | null;
   assignee: string | null;
   githubIssueNumber: number | null;
+  completedInSprintId: string | null;
   createdAt: string;
   updatedAt: string;
 }

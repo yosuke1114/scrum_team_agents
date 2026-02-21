@@ -423,6 +423,49 @@ describe("sprint_complete メトリクス", () => {
     expect(state.ceremonyState).toBe("SPRINT_REVIEW");
   });
 
+  it("H1-new: BLOCKED タスクが完了時に BACKLOG に降格する", async () => {
+    const ids = await createReadyTasks(3);
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: ids });
+    await store.update((s) => {
+      if (s.currentSprint) {
+        s.currentSprint.state = "ACTIVE";
+        s.currentSprint.startedAt = new Date().toISOString();
+      }
+      s.tasks[ids[0]].state = "DONE";
+      s.tasks[ids[1]].state = "IN_PROGRESS";
+      s.tasks[ids[2]].state = "BLOCKED";
+    });
+
+    const result = await sprintComplete(store, { sprintId: "sprint-1" });
+    expect(result.ok).toBe(true);
+    expect(result.message).toContain("ブロック中タスク");
+    expect(result.message).toContain("BACKLOG に降格");
+
+    const state = store.getState();
+    // BLOCKED → BACKLOG
+    expect(state.tasks[ids[2]].state).toBe("BACKLOG");
+    expect(state.tasks[ids[2]].assignee).toBeNull();
+    // DONE はアーカイブ
+    expect(state.archivedTasks[ids[0]]).toBeDefined();
+    expect(state.tasks[ids[0]]).toBeUndefined();
+  });
+
+  it("M6: completedInSprintId がアーカイブ時に設定される", async () => {
+    const ids = await createReadyTasks(2);
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: ids });
+    await store.update((s) => {
+      if (s.currentSprint) {
+        s.currentSprint.state = "ACTIVE";
+        s.currentSprint.startedAt = new Date().toISOString();
+      }
+      s.tasks[ids[0]].state = "DONE";
+    });
+
+    await sprintComplete(store, { sprintId: "sprint-1" });
+    const state = store.getState();
+    expect(state.archivedTasks[ids[0]].completedInSprintId).toBe("sprint-1");
+  });
+
   it("H3: review セレモニーなしで完了すると警告が出る", async () => {
     const ids = await createReadyTasks(1);
     await sprintCreate(store, { goal: "Sprint 1", taskIds: ids });

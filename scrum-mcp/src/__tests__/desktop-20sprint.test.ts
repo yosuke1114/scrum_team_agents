@@ -450,18 +450,18 @@ describe("机上20スプリント回転", () => {
     expect(m12.completedPoints).toBe(10);
 
     await completeAndWrapUp("sprint-12");
-    // s12t3 はブロック状態で残留
+    // H1: s12t3 は BLOCKED → BACKLOG に自動降格
     expect(store.getState().tasks[s12t3]).toBeDefined();
-    log(`  完了: 2/3 (10/13pt), 1件ブロック残`);
+    expect(store.getState().tasks[s12t3].state).toBe("BACKLOG");
+    expect(store.getState().tasks[s12t3].assignee).toBeNull();
+    log(`  完了: 2/3 (10/13pt), 1件ブロック→BACKLOG自動降格`);
 
     // ================================================================
     // Sprint 13: 中止（BACKLOG タスク保持 → H2 検証）
     // ================================================================
     banner(13, "中止（BACKLOG 保持 → H2 検証）");
 
-    // s12t3 は BLOCKED → TODO に戻す → BACKLOG に降格
-    await taskUpdate(store, { taskId: s12t3, state: "TODO" });
-    await taskUpdate(store, { taskId: s12t3, state: "BACKLOG" });
+    // s12t3 は H1 により BACKLOG に自動降格済み
     // 新タスク追加
     const s13t1 = await mkTask("新決済連携", "high", 5);
     const s13t2 = await mkTask("新外部API", "medium", 3);

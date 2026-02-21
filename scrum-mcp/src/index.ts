@@ -116,7 +116,7 @@ server.tool(
   "sprint_create",
   "既存の READY タスクを選択してスプリントを作成する",
   {
-    goal: z.string(),
+    goal: z.string().min(1),
     taskIds: z.array(z.string()),
   },
   async ({ goal, taskIds }) => {

@@ -8,9 +8,19 @@ import type {
   ToolResult,
   Sprint,
   SprintMetrics,
+  ScrumState,
   TaskState,
   Priority,
 } from "../types.js";
+
+/** currentSprint の状態を sprints[] 配列に同期する */
+export function syncCurrentSprint(s: ScrumState): void {
+  if (!s.currentSprint) return;
+  const idx = s.sprints.findIndex((sp) => sp.id === s.currentSprint!.id);
+  if (idx >= 0) {
+    s.sprints[idx] = { ...s.currentSprint, tasks: [...s.currentSprint.tasks] };
+  }
+}
 
 export async function sprintCreate(
   store: StateStore,
@@ -59,7 +69,9 @@ export async function sprintCreate(
     };
   }
 
-  const sprintNumber = s.sprints.length + 1;
+  const sprintNumber = s.sprints.length > 0
+    ? Math.max(...s.sprints.map((sp) => sp.number)) + 1
+    : 1;
   const sprintId = `sprint-${sprintNumber}`;
 
   const sprint: Sprint = {
@@ -141,11 +153,7 @@ export async function sprintAddTasks(
       s.tasks[id].updatedAt = new Date().toISOString();
       s.currentSprint!.tasks.push(id);
     }
-    // sprints[] 同期
-    const idx = s.sprints.findIndex((sp) => sp.id === s.currentSprint!.id);
-    if (idx >= 0) {
-      s.sprints[idx].tasks = [...s.currentSprint!.tasks];
-    }
+    syncCurrentSprint(s);
   });
 
   return {
@@ -212,10 +220,19 @@ export async function sprintComplete(
     tasksByPriority,
   };
 
-  // H3: review セレモニー実行中かの検証（ソフト警告）
+  // review セレモニー実行中かの検証（ソフト警告）
   let reviewWarning: string | undefined;
   if (s.currentCeremony !== "review") {
     reviewWarning = "⚠️ review セレモニーが開始されていません。sprint_complete → review → retro のフローを推奨します。";
+  }
+
+  // H1: BLOCKED タスクの情報を収集（降格対象）
+  const blockedTasks: Array<{ id: string; title: string }> = [];
+  for (const id of taskIds) {
+    const task = s.tasks[id];
+    if (task && task.state === "BLOCKED") {
+      blockedTasks.push({ id: task.id, title: task.title });
+    }
   }
 
   await store.update((s) => {
@@ -225,24 +242,29 @@ export async function sprintComplete(
       s.currentSprint.metrics = metrics;
 
       // sprints[] 同期を先に実行（アーカイブ前の完了状態を記録）
-      const idx = s.sprints.findIndex((sp) => sp.id === s.currentSprint!.id);
-      if (idx >= 0) {
-        s.sprints[idx] = {
-          ...s.currentSprint,
-          tasks: [...s.currentSprint.tasks],
-        };
+      syncCurrentSprint(s);
+
+      // H1: BLOCKED タスクを BACKLOG に降格（孤立防止）
+      for (const id of s.currentSprint.tasks) {
+        const task = s.tasks[id];
+        if (task && task.state === "BLOCKED") {
+          task.state = "BACKLOG";
+          task.assignee = null;
+          task.updatedAt = new Date().toISOString();
+        }
       }
 
       // DONE タスクをアーカイブ
       for (const id of s.currentSprint.tasks) {
         const task = s.tasks[id];
         if (task && task.state === "DONE") {
+          task.completedInSprintId = s.currentSprint.id;
           s.archivedTasks[id] = { ...task };
           delete s.tasks[id];
         }
       }
 
-      // H2: sprint セレモニー中に complete した場合、セレモニー状態を自動リセット
+      // sprint セレモニー中に complete した場合、セレモニー状態を自動リセット
       // （review 経由の正常フローではここに到達しない）
       if (s.currentCeremony === "sprint") {
         s.currentCeremony = null;
@@ -251,10 +273,18 @@ export async function sprintComplete(
     }
   });
 
+  const warnings: string[] = [];
   const msg = `スプリント「${input.sprintId}」を完了しました。完了率: ${completionRate}%`;
+  if (reviewWarning) warnings.push(reviewWarning);
+  if (blockedTasks.length > 0) {
+    warnings.push(
+      `⚠️ ${blockedTasks.length} ブロック中タスクを BACKLOG に降格しました: ${blockedTasks.map((t) => t.id).join(", ")}`
+    );
+  }
+
   return {
     ok: true,
-    message: reviewWarning ? `${msg}\n${reviewWarning}` : msg,
+    message: warnings.length > 0 ? `${msg}\n${warnings.join("\n")}` : msg,
     data: metrics,
   };
 }
@@ -398,19 +428,14 @@ export async function sprintCancel(
       for (const id of s.currentSprint.tasks) {
         const task = s.tasks[id];
         if (task && task.state === "DONE") {
+          task.completedInSprintId = s.currentSprint.id;
           s.archivedTasks[id] = { ...task };
           delete s.tasks[id];
         }
       }
 
       // sprints[] 同期
-      const idx = s.sprints.findIndex((sp) => sp.id === s.currentSprint!.id);
-      if (idx >= 0) {
-        s.sprints[idx] = {
-          ...s.currentSprint,
-          tasks: [...s.currentSprint.tasks],
-        };
-      }
+      syncCurrentSprint(s);
     }
   });
 

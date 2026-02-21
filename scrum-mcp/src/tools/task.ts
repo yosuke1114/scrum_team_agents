@@ -29,6 +29,7 @@ export async function taskCreate(
     points: input.points ?? null,
     assignee: null,
     githubIssueNumber: null,
+    completedInSprintId: null,
     createdAt: now,
     updatedAt: now,
   };
