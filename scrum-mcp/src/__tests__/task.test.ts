@@ -113,6 +113,25 @@ describe("task_update", () => {
     expect(state.tasks[taskId].assignee).toBe("developer-1");
   });
 
+  it("TODO → BACKLOG への降格遷移", async () => {
+    const taskId = await createTestTask();
+    await taskUpdate(store, { taskId, state: "READY" });
+    await taskUpdate(store, { taskId, state: "TODO" });
+
+    const result = await taskUpdate(store, { taskId, state: "BACKLOG" });
+    expect(result.ok).toBe(true);
+    expect(store.getState().tasks[taskId].state).toBe("BACKLOG");
+  });
+
+  it("READY → BACKLOG への降格遷移", async () => {
+    const taskId = await createTestTask();
+    await taskUpdate(store, { taskId, state: "READY" });
+
+    const result = await taskUpdate(store, { taskId, state: "BACKLOG" });
+    expect(result.ok).toBe(true);
+    expect(store.getState().tasks[taskId].state).toBe("BACKLOG");
+  });
+
   it("BACKLOG → IN_PROGRESS の不正遷移はエラー", async () => {
     const taskId = await createTestTask();
     const result = await taskUpdate(store, { taskId, state: "IN_PROGRESS" });

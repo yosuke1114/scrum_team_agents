@@ -183,7 +183,7 @@ server.tool(
 // --- sprint_cancel ---
 server.tool(
   "sprint_cancel",
-  "スプリントを中止する",
+  "スプリントを中止する（セレモニー状態リセット、作業中タスクをREADYに戻す）",
   {
     sprintId: z.string(),
     reason: z.string(),

@@ -217,6 +217,15 @@ export async function sprintComplete(
       s.currentSprint.state = "COMPLETED";
       s.currentSprint.completedAt = new Date().toISOString();
 
+      // H3: sprints[] 同期を先に実行（アーカイブ前の完了状態を記録）
+      const idx = s.sprints.findIndex((sp) => sp.id === s.currentSprint!.id);
+      if (idx >= 0) {
+        s.sprints[idx] = {
+          ...s.currentSprint,
+          tasks: [...s.currentSprint.tasks],
+        };
+      }
+
       // DONE タスクをアーカイブ
       for (const id of s.currentSprint.tasks) {
         const task = s.tasks[id];
@@ -224,15 +233,6 @@ export async function sprintComplete(
           s.archivedTasks[id] = { ...task };
           delete s.tasks[id];
         }
-      }
-
-      // sprints[] 同期
-      const idx = s.sprints.findIndex((sp) => sp.id === s.currentSprint!.id);
-      if (idx >= 0) {
-        s.sprints[idx] = {
-          ...s.currentSprint,
-          tasks: [...s.currentSprint.tasks],
-        };
       }
     }
   });
@@ -346,10 +346,36 @@ export async function sprintCancel(
     };
   }
 
+  // H2: 中止前に作業中タスクの情報を収集
+  const taskIds = s.currentSprint.tasks;
+  const affectedTasks: Array<{ id: string; title: string; previousState: TaskState }> = [];
+  for (const id of taskIds) {
+    const task = s.tasks[id];
+    if (task && task.state !== "DONE" && task.state !== "BACKLOG" && task.state !== "READY") {
+      affectedTasks.push({ id: task.id, title: task.title, previousState: task.state });
+    }
+  }
+
   await store.update((s) => {
     if (s.currentSprint) {
       s.currentSprint.state = "CANCELLED";
       s.currentSprint.completedAt = new Date().toISOString();
+
+      // H1: セレモニー状態クリーンアップ
+      if (s.currentCeremony === "sprint") {
+        s.currentCeremony = null;
+      }
+      s.ceremonyState = "IDLE";
+
+      // H2: 作業中タスクを READY に戻す
+      for (const id of s.currentSprint.tasks) {
+        const task = s.tasks[id];
+        if (task && task.state !== "DONE") {
+          task.state = "READY";
+          task.assignee = null;
+          task.updatedAt = new Date().toISOString();
+        }
+      }
 
       // sprints[] 同期
       const idx = s.sprints.findIndex((sp) => sp.id === s.currentSprint!.id);
@@ -362,9 +388,20 @@ export async function sprintCancel(
     }
   });
 
+  const warnings: string[] = [];
+  if (affectedTasks.length > 0) {
+    warnings.push(
+      `⚠️ ${affectedTasks.length} タスクを READY に戻しました:`,
+      ...affectedTasks.map((t) => `  - ${t.id}: ${t.title} (${t.previousState} → READY)`),
+    );
+  }
+
   return {
     ok: true,
-    message: `スプリント「${input.sprintId}」を中止しました。理由: ${input.reason}`,
-    data: { sprintId: input.sprintId, reason: input.reason },
+    message: [
+      `スプリント「${input.sprintId}」を中止しました。理由: ${input.reason}`,
+      ...warnings,
+    ].join("\n"),
+    data: { sprintId: input.sprintId, reason: input.reason, affectedTasks },
   };
 }

@@ -129,8 +129,10 @@ interface ProjectStatusData {
     totalTasks: number;
     completedTasks: number;
     completionRate: number;
+    totalPoints: number;
+    completedPoints: number;
   } | null;
-  backlog: { total: number; ready: number };
+  backlog: { total: number; ready: number; totalPoints: number };
   wip: { inProgress: number; inReview: number; limits: { inProgress: number; inReview: number } };
   blockers: Array<{ id: string; title: string; assignee: string | null }>;
   sprintHistory: number;
@@ -152,6 +154,13 @@ export async function projectStatus(
     const sprintTasks = sp.tasks.map((id) => s.tasks[id]).filter(Boolean);
     const done = sprintTasks.filter((t) => t.state === "DONE").length;
     const total = sprintTasks.length;
+    let spTotalPoints = 0;
+    let spCompletedPoints = 0;
+    for (const t of sprintTasks) {
+      const pts = t.points ?? 0;
+      spTotalPoints += pts;
+      if (t.state === "DONE") spCompletedPoints += pts;
+    }
     sprintInfo = {
       id: sp.id,
       goal: sp.goal,
@@ -159,13 +168,19 @@ export async function projectStatus(
       totalTasks: total,
       completedTasks: done,
       completionRate: total > 0 ? Math.round((done / total) * 100) : 0,
+      totalPoints: spTotalPoints,
+      completedPoints: spCompletedPoints,
     };
   }
 
   // バックログ情報
+  const backlogTasks = allTasks.filter((t) => t.state === "BACKLOG");
+  const readyTasks = allTasks.filter((t) => t.state === "READY");
+  const backlogPoints = [...backlogTasks, ...readyTasks].reduce((sum, t) => sum + (t.points ?? 0), 0);
   const backlog = {
-    total: allTasks.filter((t) => t.state === "BACKLOG").length,
-    ready: allTasks.filter((t) => t.state === "READY").length,
+    total: backlogTasks.length,
+    ready: readyTasks.length,
+    totalPoints: backlogPoints,
   };
 
   // WIP 情報（スプリントスコープ）
@@ -208,6 +223,7 @@ export async function projectStatus(
       `🏃 スプリント: ${sprintInfo.id} [${sprintInfo.state}]`,
       `   ゴール: ${sprintInfo.goal}`,
       `   進捗: ${sprintInfo.completionRate}% (${sprintInfo.completedTasks}/${sprintInfo.totalTasks})`,
+      `   ポイント: ${sprintInfo.completedPoints}/${sprintInfo.totalPoints} pt`,
     );
   } else {
     lines.push("", "🏃 スプリント: なし");
@@ -215,7 +231,7 @@ export async function projectStatus(
 
   lines.push(
     "",
-    `📦 バックログ: ${backlog.total} タスク (READY: ${backlog.ready})`,
+    `📦 バックログ: ${backlog.total} タスク (READY: ${backlog.ready}) ${backlog.totalPoints} pt`,
     `⚡ WIP: IN_PROGRESS ${inProgress}/${s.wipLimits.inProgress} | IN_REVIEW ${inReview}/${s.wipLimits.inReview}`,
   );
 
