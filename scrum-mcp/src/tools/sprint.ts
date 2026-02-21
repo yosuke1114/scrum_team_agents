@@ -241,6 +241,13 @@ export async function sprintComplete(
           delete s.tasks[id];
         }
       }
+
+      // H2: sprint セレモニー中に complete した場合、セレモニー状態を自動リセット
+      // （review 経由の正常フローではここに到達しない）
+      if (s.currentCeremony === "sprint") {
+        s.currentCeremony = null;
+        s.ceremonyState = "IDLE";
+      }
     }
   });
 
@@ -354,12 +361,16 @@ export async function sprintCancel(
     };
   }
 
-  // H2: 中止前に作業中タスクの情報を収集
+  // 中止前に作業中タスクの情報を収集
   const taskIds = s.currentSprint.tasks;
   const affectedTasks: Array<{ id: string; title: string; previousState: TaskState }> = [];
+  const doneTasks: Array<{ id: string; title: string }> = [];
   for (const id of taskIds) {
     const task = s.tasks[id];
-    if (task && task.state !== "DONE" && task.state !== "BACKLOG" && task.state !== "READY") {
+    if (!task) continue;
+    if (task.state === "DONE") {
+      doneTasks.push({ id: task.id, title: task.title });
+    } else if (task.state !== "BACKLOG" && task.state !== "READY") {
       affectedTasks.push({ id: task.id, title: task.title, previousState: task.state });
     }
   }
@@ -373,13 +384,22 @@ export async function sprintCancel(
       s.currentCeremony = null;
       s.ceremonyState = "IDLE";
 
-      // H2: 作業中タスクを READY に戻す（BACKLOG は明示的降格なので保持）
+      // 作業中タスクを READY に戻す（BACKLOG は明示的降格なので保持）
       for (const id of s.currentSprint.tasks) {
         const task = s.tasks[id];
         if (task && task.state !== "DONE" && task.state !== "BACKLOG") {
           task.state = "READY";
           task.assignee = null;
           task.updatedAt = new Date().toISOString();
+        }
+      }
+
+      // H1: DONE タスクをアーカイブ（sprintComplete と同様）
+      for (const id of s.currentSprint.tasks) {
+        const task = s.tasks[id];
+        if (task && task.state === "DONE") {
+          s.archivedTasks[id] = { ...task };
+          delete s.tasks[id];
         }
       }
 
@@ -401,6 +421,12 @@ export async function sprintCancel(
       ...affectedTasks.map((t) => `  - ${t.id}: ${t.title} (${t.previousState} → READY)`),
     );
   }
+  if (doneTasks.length > 0) {
+    warnings.push(
+      `📦 ${doneTasks.length} 完了タスクをアーカイブしました:`,
+      ...doneTasks.map((t) => `  - ${t.id}: ${t.title}`),
+    );
+  }
 
   return {
     ok: true,
@@ -408,6 +434,6 @@ export async function sprintCancel(
       `スプリント「${input.sprintId}」を中止しました。理由: ${input.reason}`,
       ...warnings,
     ].join("\n"),
-    data: { sprintId: input.sprintId, reason: input.reason, affectedTasks },
+    data: { sprintId: input.sprintId, reason: input.reason, affectedTasks, archivedTasks: doneTasks },
   };
 }

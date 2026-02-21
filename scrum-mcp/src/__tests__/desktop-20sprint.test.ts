@@ -336,10 +336,12 @@ describe("机上20スプリント回転", () => {
     // M1: review セレモニーもクリアされる
     expect(store.peek().currentCeremony).toBeNull();
     expect(store.peek().ceremonyState).toBe("IDLE");
-    // DONE タスクは DONE のまま、未完了は READY
-    expect(store.peek().tasks[s8t1].state).toBe("DONE");
+    // H1: DONE タスクはアーカイブされる、未完了は READY
+    expect(store.peek().archivedTasks[s8t1]).toBeDefined();
+    expect(store.peek().archivedTasks[s8t1].state).toBe("DONE");
+    expect(store.peek().tasks[s8t1]).toBeUndefined();
     expect(store.peek().tasks[s8t2].state).toBe("READY");
-    log(`  M1 検証: review 中の中止 → セレモニー完全クリア`);
+    log(`  M1+H1 検証: review 中の中止 → セレモニー完全クリア + DONE アーカイブ`);
 
     // ================================================================
     // Sprint 9: ポイントなしスプリント
@@ -379,22 +381,10 @@ describe("机上20スプリント回転", () => {
     expect(completeNoReview.message).toContain("review セレモニーが開始されていません");
     log(`  H3 検証: review なし完了 → 警告メッセージ確認`);
 
-    // IDLEに戻す（reviewなしだったので手動でceremony状態をリセット）
-    // sprint は COMPLETED だが ceremony は sprint のまま → retro で閉じる
-    // Actually sprintComplete doesn't change ceremony, and sprint ceremony is still active
-    // We need to end the sprint ceremony first, but ceremony_end rejects "sprint"
-    // So we need to go through review → retro flow
-    // But wait - the sprint is already COMPLETED. Let's check if review can start on COMPLETED sprint
-    // ceremony.ts: review requires ACTIVE or CANCELLED. COMPLETED is not allowed.
-    // So we're stuck with sprint ceremony active. Let's handle this:
-    // Actually, looking at the state: currentCeremony is "sprint", ceremonyState is "SPRINT_ACTIVE"
-    // sprintComplete only changes sprint state, not ceremony state
-    // We can cancel to reset... but sprint is already COMPLETED
-    // Let's just manually reset for this test scenario
-    await store.update((s) => {
-      s.currentCeremony = null;
-      s.ceremonyState = "IDLE";
-    });
+    // H2 検証: sprint セレモニー中の complete で自動リセットされる
+    expect(store.peek().currentCeremony).toBeNull();
+    expect(store.peek().ceremonyState).toBe("IDLE");
+    log(`  H2 検証: sprint セレモニー → 自動 IDLE リセット`);
 
     // 中間ベロシティ検証
     const v10 = await velocityReport(store, {});
@@ -509,8 +499,7 @@ describe("机上20スプリント回転", () => {
     // s7t3(S7 BACKLOG残), s12t3(S13 BACKLOG残), s13t1(S13 READY戻), s13t2(S13 READY戻)
     await taskUpdate(store, { taskId: s7t3, state: "READY" });
     await taskUpdate(store, { taskId: s12t3, state: "READY" });
-    // s8t1 は DONE のまま（アーカイブされてない？いや、cancelなのでアーカイブされない）
-    // 実際 s8t1 は DONE で tasks に残っている
+    // s8t1 は H1 によりキャンセル時にアーカイブ済み
     // s8t2 は READY
     await sprintCreate(store, {
       goal: "残タスク集約",
@@ -519,11 +508,7 @@ describe("机上20スプリント回転", () => {
     await quickActivate();
 
     for (const id of [s7t3, s12t3, s13t1, s13t2, s8t2]) {
-      // s8t1 は含めない（DONE タスクはスプリントに含めない方が良い）
-      const t = store.peek().tasks[id];
-      if (t && t.state !== "DONE") {
-        await completeTask(id);
-      }
+      await completeTask(id);
     }
 
     const m14 = (await metricsReport(store, {})).data as SprintMetrics;
@@ -671,7 +656,7 @@ describe("机上20スプリント回転", () => {
     // ================================================================
     banner(20, "最終 + 総合ベロシティ検証");
 
-    // S19 の降格タスクを再利用 + s8t1(DONE, cancelスプリント残) を回収しない
+    // S19 の降格タスクを再利用 + s8t1(H1 によりアーカイブ済み)
     await taskUpdate(store, { taskId: s19t3, state: "READY" });
     const s20t1 = await mkTask("最終仕上げA", "high", 5);
     const s20t2 = await mkTask("最終仕上げB", "medium", 3);
