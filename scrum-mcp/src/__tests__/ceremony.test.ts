@@ -243,7 +243,7 @@ describe("ceremony_start 前提条件", () => {
     });
     const result = await ceremonyStart(store, { type: "review" });
     expect(result.ok).toBe(false);
-    expect(result.error).toContain("アクティブなスプリントがありません");
+    expect(result.error).toContain("アクティブまたは中止済みのスプリントがありません");
   });
 
   it("retro はスプリントが PLANNING だとエラー", async () => {

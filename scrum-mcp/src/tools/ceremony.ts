@@ -64,12 +64,15 @@ export async function ceremonyStart(
     };
   }
 
-  // review 前提チェック
+  // review 前提チェック（ACTIVE または CANCELLED）
   if (input.type === "review") {
-    if (!s.currentSprint || s.currentSprint.state !== "ACTIVE") {
+    if (
+      !s.currentSprint ||
+      (s.currentSprint.state !== "ACTIVE" && s.currentSprint.state !== "CANCELLED")
+    ) {
       return {
         ok: false,
-        error: "アクティブなスプリントがありません。",
+        error: "アクティブまたは中止済みのスプリントがありません。",
       };
     }
   }
