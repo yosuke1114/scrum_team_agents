@@ -10,6 +10,7 @@
 - `task_update` - タスク状態の更新（DONE or IN_PROGRESS）
 - `get_task` - タスク詳細確認（受入条件との照合）
 - `list_tasks` - レビュー待ちタスクの確認
+- `quality_check` - タスク品質ゲートチェック
 
 ## セレモニー別ワークフロー
 
@@ -20,13 +21,14 @@
 - ツール使用なし
 
 ### Sprint（主役: レビュー）
-**allowed_tools**: `list_tasks`, `get_task`, `task_update`
+**allowed_tools**: `list_tasks`, `get_task`, `task_update`, `quality_check`
 
 タスクのレビューフロー:
 
 1. **レビュー対象の確認**:
    - `list_tasks` state: "IN_REVIEW" でレビュー待ちタスクを確認
    - `get_task` で受入条件を確認
+   - `quality_check` で品質ゲートをチェック（受入条件、見積もり、担当者）
 
 2. **レビュー実施**（優先度順）:
    - **正確性**: 受入条件を正しく満たしているか

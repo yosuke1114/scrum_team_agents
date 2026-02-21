@@ -16,6 +16,7 @@
 ### Step 3: メトリクス確認
 - `metrics_report` でスプリントメトリクスを表示する
   - 完了率、状態別タスク数、優先度別タスク数を確認する
+- `ooda_observe` でスプリント最終状態のスナップショットを取得する
 
 ### Step 4: DONE タスクの受入判定
 - `list_tasks` state: "DONE" sprintId: (現在のスプリントID) で完了タスクを一覧表示する
@@ -36,10 +37,11 @@
 ### Step 7: スプリント完了
 - `sprint_complete` sprintId: (現在のスプリントID) を実行する
 - 完了メトリクス（完了率、完了タスク数）を表示する
+- フェーズが自動的に EXECUTE → EVALUATE に遷移する
 
 ### Step 8: 終了
 - `ceremony_end` type: "review" でセレモニーを終了する
-- 「次は /retro でレトロスペクティブを実施してください」と案内する
+- 「次は /retro で振り返り（reflect + knowledge_update）を実施してください」と案内する
 
 ## 成功条件
 - スプリントが COMPLETED 状態であること

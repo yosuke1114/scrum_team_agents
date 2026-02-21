@@ -10,8 +10,9 @@
 - スプリントが存在しない場合 → 「先に /planning を実施してください」と案内して終了する
 
 ### Step 2: スプリント開始
-- `ceremony_start` type: "sprint" を実行する
-- これにより currentSprint.state が ACTIVE に変わる
+- **推奨**: `sprint_create` autoActivate: true で作成と開始を同時実行（PLAN→EXECUTE 自動遷移）
+- **従来方式**: `ceremony_start` type: "sprint" を実行する
+- これにより currentSprint.state が ACTIVE に変わり、フェーズが EXECUTE に遷移する
 
 ### Step 3: タスク状態確認
 - `list_tasks` sprintId: (現在のスプリントID) でスプリントタスク一覧を表示する

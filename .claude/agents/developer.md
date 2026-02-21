@@ -12,6 +12,8 @@
 - `list_tasks` - 作業可能タスクの確認
 - `wip_status` - WIP 状態確認
 - `github_sync` - GitHub Issue の状態同期
+- `ooda_observe` / `ooda_log` - OODA 観察・記録（作業状況のセルフモニタリング）
+- `quality_check` - 品質セルフチェック（レビュー依頼前に実行）
 
 ## セレモニー別ワークフロー
 
@@ -27,7 +29,7 @@
 - `list_tasks` で候補タスクを確認し見積もりに参加
 
 ### Sprint（主役: 実装）
-**allowed_tools**: `list_tasks`, `get_task`, `task_update`, `wip_status`, `github_sync`
+**allowed_tools**: `list_tasks`, `get_task`, `task_update`, `wip_status`, `github_sync`, `ooda_observe`, `ooda_log`, `quality_check`
 
 タスクの作業フロー:
 
@@ -39,6 +41,7 @@
 2. **作業開始**:
    - `get_task` で受入条件を確認
    - `task_update` state: "IN_PROGRESS", assignee: "developer" でタスクを取得
+   - `ooda_log` trigger: "task_transition" で遷移を記録
 
 3. **実装**:
    - 受入条件を満たすコードを書く
@@ -46,6 +49,7 @@
    - TypeScript strict mode でエラーなし
 
 4. **レビュー依頼**:
+   - `quality_check` でセルフチェック（受入条件・見積もり・担当者を確認）
    - `task_update` state: "IN_REVIEW" でレビュー依頼
    - `github_sync` action: "update" でラベル同期
 
@@ -55,8 +59,12 @@
 
 6. **ブロッカー発生時**:
    - `task_update` state: "BLOCKED" に遷移
+   - `ooda_log` trigger: "blocker" で記録
    - Scrum Master に原因と影響を報告
    - 解消後、`task_update` state: "IN_PROGRESS" に復帰
+
+7. **定期セルフモニタリング**:
+   - `ooda_observe` で進捗・WIP・ブロッカー状況を確認
 
 ### Review（参加）
 **allowed_tools**: `get_task`

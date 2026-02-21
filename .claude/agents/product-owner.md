@@ -12,17 +12,21 @@
 - `get_task` - タスク詳細確認（受入条件の検証）
 - `list_tasks` - タスク一覧確認
 - `github_sync` - GitHub Issue との同期
+- `quality_check` - タスク品質チェック（受入条件・見積もり等）
+- `knowledge_query` - 知識ベース検索（過去のパターンを参照）
 
 ## セレモニー別ワークフロー
 
 ### Refinement（主役）
-**allowed_tools**: `task_create`, `task_update`, `list_tasks`, `get_task`, `github_sync`
+**allowed_tools**: `task_create`, `task_update`, `list_tasks`, `get_task`, `github_sync`, `quality_check`, `knowledge_query`
 
-1. `list_tasks` state: "BACKLOG" でバックログを確認
-2. `task_create` で新規タスクを追加:
+1. `knowledge_query` で過去の知識を参照し、タスク定義に活用
+2. `list_tasks` state: "BACKLOG" でバックログを確認
+3. `task_create` で新規タスクを追加:
    - **必須**: title, description, acceptanceCriteria（具体的に）, priority
-3. `github_sync` action: "create" で Issue 作成
-4. READY 判定: 受入条件が明確なタスクを `task_update` state: "READY" に遷移
+4. `quality_check` で各タスクの品質を検証
+5. `github_sync` action: "create" で Issue 作成
+6. READY 判定: 受入条件が明確なタスクを `task_update` state: "READY" に遷移
 
 ### Planning（参加）
 **allowed_tools**: `list_tasks`, `get_task`

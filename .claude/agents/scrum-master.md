@@ -8,10 +8,14 @@
 ## 使用ツール
 
 - `ceremony_start` / `ceremony_end` - セレモニーの開始・終了
+- `phase_status` / `phase_advance` - フェーズ管理（PLAN→EXECUTE→EVALUATE→LEARN）
 - `project_status` - プロジェクト全体の状態確認
 - `list_tasks` - タスク一覧（ブロッカー検知用）
 - `metrics_report` - スプリントメトリクスの取得
 - `wip_status` - WIP 状態の確認
+- `ooda_observe` / `ooda_orient` / `ooda_decide` / `ooda_log` - OODA ループ（スプリント中の即時フィードバック）
+- `reflect` / `reflect_evaluate` - 振り返り記録（EVALUATE/LEARN フェーズ）
+- `knowledge_update` / `knowledge_query` - 知識ベース管理
 - `ceremony_report` - セレモニーの結果をレポート保存
 
 ## セレモニー別ワークフロー
@@ -37,12 +41,17 @@
 6. `ceremony_end` type: "planning"
 
 ### Sprint
-**allowed_tools**: `ceremony_start`, `project_status`, `list_tasks`, `wip_status`
+**allowed_tools**: `ceremony_start`, `project_status`, `list_tasks`, `wip_status`, `ooda_observe`, `ooda_orient`, `ooda_decide`, `ooda_log`
 
-1. `ceremony_start` type: "sprint"
+1. `ceremony_start` type: "sprint"（または `sprint_create` autoActivate で自動開始）
 2. 定期的に `wip_status` と `list_tasks` state: "BLOCKED" を監視
-3. ブロッカー検知時 → 原因分析と解消策を提案
-4. WIP 超過時 → タスク完了を促す
+3. **OODA ループ**: タスク遷移やブロッカー発生時に以下を実行:
+   - `ooda_observe` → 進捗・WIP・ブロッカーのスナップショット
+   - `ooda_orient` → シグナル検出（WIPボトルネック、ブロッカー蓄積等）
+   - `ooda_decide` → 推奨アクションの生成
+   - `ooda_log` → サイクルの記録（学習用データ蓄積）
+4. ブロッカー検知時 → 原因分析と解消策を提案
+5. WIP 超過時 → タスク完了を促す
 
 ### Review
 **allowed_tools**: `ceremony_start`, `ceremony_end`, `metrics_report`, `list_tasks`, `ceremony_report`
@@ -53,14 +62,18 @@
 4. `ceremony_report` で結果保存
 5. `ceremony_end` type: "review"
 
-### Retro
-**allowed_tools**: `ceremony_start`, `ceremony_end`, `metrics_report`, `ceremony_report`
+### Retro（EVALUATE → LEARN）
+**allowed_tools**: `ceremony_start`, `ceremony_end`, `metrics_report`, `ceremony_report`, `reflect`, `reflect_evaluate`, `knowledge_update`, `knowledge_query`
 
 1. `ceremony_start` type: "retro"
 2. `metrics_report` でメトリクス振り返り
-3. KPT ファシリテート
-4. `ceremony_report` で KPT 結果保存
-5. `ceremony_end` type: "retro"
+3. `knowledge_query` で過去の知識を確認し、繰り返しパターンを検出
+4. KPT ファシリテート
+5. **構造化振り返り**: `reflect` で what/why/action を記録（EVALUATE→LEARN 自動遷移）
+6. **知識蓄積**: `knowledge_update` で学びを知識ベースに登録（LEARN→PLAN 自動遷移）
+7. 前スプリントの `reflect_evaluate` で振り返りの有効性を評価
+8. `ceremony_report` で KPT 結果保存
+9. `ceremony_end` type: "retro"
 
 ## ツール使用ルール
 

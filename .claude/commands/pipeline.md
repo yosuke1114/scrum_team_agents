@@ -6,8 +6,8 @@ CI 環境やデモ、一気通貫のスプリント実行に使用します。
 ## モード
 
 ### フルサイクル（デフォルト）
-全セレモニーを順に実行する:
-1. Refinement → 2. Planning → 3. Sprint Start → 4. Sprint (実装) → 5. Sprint Review → 6. Retro
+4フェーズ（PLAN→EXECUTE→EVALUATE→LEARN）を一気通貫で実行する:
+1. Refinement → 2. Planning → 3. Sprint Start → 4. Sprint (実装 + OODA) → 5. Sprint Review → 6. Retro (振り返り + 知識蓄積)
 
 ### ハーフサイクル（from で開始位置を指定）
 途中のセレモニーから実行を開始する:
@@ -18,8 +18,9 @@ CI 環境やデモ、一気通貫のスプリント実行に使用します。
 ## 実行フロー
 
 ### Step 1: 状態確認と実行計画
-- `project_status` でプロジェクト状況を確認する
-- 現在の ceremonyState に基づいて実行可能なセレモニーを判定する
+- `project_status` + `phase_status` でプロジェクト状況を確認する
+- 現在のフェーズと ceremonyState に基づいて実行可能なセレモニーを判定する
+- `knowledge_query` で前サイクルの知識を参照する
 - パイプラインの実行計画を表示する:
   ```
   パイプライン実行計画:
@@ -48,13 +49,17 @@ CI 環境やデモ、一気通貫のスプリント実行に使用します。
 - `/sprint-start` コマンドと同等のフローを実行する
 - Sprint 開始後、実装フェーズに移る
 
-### Step 5: Sprint (実装フェーズ)
+### Step 5: Sprint (実装フェーズ + OODA ループ)
 - Developer エージェントのワークフローに従い、タスクを実装する
 - 各タスクについて:
   1. `task_update` state: "IN_PROGRESS" で作業開始
   2. 実装・テスト作成
-  3. `task_update` state: "IN_REVIEW" でレビュー依頼
-  4. Reviewer がレビュー → DONE or 差し戻し
+  3. `quality_check` でセルフチェック
+  4. `task_update` state: "IN_REVIEW" でレビュー依頼
+  5. Reviewer がレビュー → DONE or 差し戻し
+- **OODA ループ**: タスク遷移ごとに `ooda_observe` → `ooda_orient` → `ooda_decide` で状況判断
+  - ボトルネック検出時は推奨アクションに従う
+  - `ooda_log` でサイクルを記録
 - **完了条件**: 全タスクが DONE または BLOCKED になった時点で次へ進む
 
 ### Step 6: Sprint Review 実行
@@ -62,9 +67,11 @@ CI 環境やデモ、一気通貫のスプリント実行に使用します。
 - **並列レビュー**: PO（受入条件）と Reviewer（コード品質）が同時に判定する
 - セレモニー完了後、次のステップへ進む
 
-### Step 7: Retro 実行
+### Step 7: Retro 実行（EVALUATE → LEARN → PLAN）
 - `/retro` コマンドと同等のフローを実行する
 - KPT を実施し、アクションアイテムを策定する
+- `reflect` で構造化振り返りを記録（EVALUATE → LEARN 自動遷移）
+- `knowledge_update` で学びを知識ベースに記録（LEARN → PLAN 自動遷移）
 - パイプライン完了
 
 ### Step 8: パイプライン完了サマリー
@@ -94,9 +101,11 @@ CI 環境やデモ、一気通貫のスプリント実行に使用します。
   - ユーザーに続行するか確認する（BLOCKED タスクを除外して続行 or 停止）
 
 ## 成功条件
+- phase が PLAN に戻っていること
 - ceremonyState が IDLE に戻っていること
 - 少なくとも1つのタスクが DONE であること
 - Retro の KPT が実施されていること
+- 最低1つの `reflect` と `knowledge_update` が記録されていること
 
 ## 参加エージェント
 - **全エージェント**: 各セレモニーの役割に従う

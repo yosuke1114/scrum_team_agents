@@ -12,6 +12,7 @@ import type {
   TaskState,
   Priority,
 } from "../types.js";
+import { setPhase } from "./phase.js";
 
 /** currentSprint の状態を sprints[] 配列に同期する */
 export function syncCurrentSprint(s: ScrumState): void {
@@ -107,6 +108,8 @@ export async function sprintCreate(
     completedAt: null,
   };
 
+  const autoActivate = input.autoActivate ?? false;
+
   await store.update((s) => {
     // READY → TODO に遷移
     for (const id of input.taskIds) {
@@ -115,12 +118,24 @@ export async function sprintCreate(
     }
     s.currentSprint = sprint;
     s.sprints.push({ ...sprint, tasks: [...input.taskIds] });
+
+    // autoActivate: PLANNINGをスキップし直接ACTIVE + EXECUTE フェーズへ
+    if (autoActivate) {
+      s.currentSprint.state = "ACTIVE";
+      s.currentSprint.startedAt = new Date().toISOString();
+      syncCurrentSprint(s);
+      setPhase(s, "EXECUTE");
+    }
   });
+
+  const msg = autoActivate
+    ? `スプリント「${sprintId}」を作成・開始しました。タスク数: ${input.taskIds.length}`
+    : `スプリント「${sprintId}」を作成しました。タスク数: ${input.taskIds.length}`;
 
   return {
     ok: true,
-    message: `スプリント「${sprintId}」を作成しました。タスク数: ${input.taskIds.length}`,
-    data: { sprintId, taskIds: input.taskIds },
+    message: msg,
+    data: { sprintId, taskIds: input.taskIds, autoActivated: autoActivate },
   };
 }
 
@@ -289,7 +304,16 @@ export async function sprintComplete(
 
       // sprint セレモニー中に complete した場合、セレモニー状態を自動リセット
       // （review 経由の正常フローではここに到達しない）
-      if (s.currentCeremony === "sprint") {
+      // setPhase の前に保存: setPhase が currentCeremony を null にするため
+      const wasSprint = s.currentCeremony === "sprint";
+
+      // Phase auto-transition: EXECUTE → EVALUATE
+      if (s.phase === "EXECUTE") {
+        setPhase(s, "EVALUATE");
+      }
+
+      // sprint セレモニー中の complete → IDLE にリセット
+      if (wasSprint) {
         s.currentCeremony = null;
         s.ceremonyState = "IDLE";
       }
@@ -433,10 +457,6 @@ export async function sprintCancel(
       s.currentSprint.state = "CANCELLED";
       s.currentSprint.completedAt = new Date().toISOString();
 
-      // セレモニー状態クリーンアップ（任意のセレモニーをクリア）
-      s.currentCeremony = null;
-      s.ceremonyState = "IDLE";
-
       // 作業中タスクを READY に戻す（BACKLOG は明示的降格なので保持）
       for (const id of s.currentSprint.tasks) {
         const task = s.tasks[id];
@@ -459,6 +479,16 @@ export async function sprintCancel(
 
       // sprints[] 同期
       syncCurrentSprint(s);
+
+      // Phase auto-transition: → EVALUATE (for reflection on cancellation)
+      if (s.phase === "EXECUTE" || s.phase === "PLAN") {
+        setPhase(s, "EVALUATE");
+      }
+
+      // セレモニー状態クリーンアップ（任意のセレモニーをクリア）
+      // setPhase の後に実行: cancel は常に IDLE に戻す
+      s.currentCeremony = null;
+      s.ceremonyState = "IDLE";
     }
   });
 

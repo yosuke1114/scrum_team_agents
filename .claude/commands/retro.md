@@ -20,7 +20,11 @@
   - BLOCKED タスクがあったか（ブロッカー分析）
   - WIP 制限は適切だったか
 
-### Step 4: KPT 実施
+### Step 4: 知識ベース参照
+- `knowledge_query` で過去の知識を参照する
+- 繰り返しパターンや前スプリントの学びを確認する
+
+### Step 5: KPT 実施
 - ユーザーと対話して以下を整理する:
 
 **Keep（継続すべきこと）**
@@ -36,28 +40,39 @@
 - Problem を解決するための具体的なアクション
 - 新しく試したいプラクティス
 
-### Step 5: アクションアイテム策定
+### Step 6: 構造化振り返り（EVALUATE → LEARN）
+- `reflect` で構造化振り返りを記録する:
+  - trigger: "phase_end" or "low_completion" or "blocker"
+  - what: 何が起きたか
+  - why: なぜ起きたか
+  - action: 次に何をするか
+- 前スプリントの振り返りがあれば `reflect_evaluate` で有効性を評価する
+
+### Step 7: 知識蓄積（LEARN → PLAN）
+- `knowledge_update` で学びを知識ベースに記録する:
+  - category: "pattern" / "antipattern" / "technique" / "constraint"
+  - insight: 具体的な知見
+- 自動的に LEARN → PLAN にフェーズ遷移する
+
+### Step 8: アクションアイテム策定
 - KPT の Try から具体的なアクションアイテムを策定する
 - 各アクションアイテムに担当者を設定する
 - 必要に応じて `task_create` でバックログにアクションアイテムを追加する
-  - priority: 改善の緊急度に応じて設定
-  - description にレトロの背景を記載する
 
-### Step 6: WIP 制限見直し
-- 現在の WIP 制限が適切か議論する:
-  - IN_PROGRESS: 現在 {wipLimits.inProgress}
-  - IN_REVIEW: 現在 {wipLimits.inReview}
-- 変更が必要な場合はユーザーに提案する
+### Step 9: WIP 制限見直し
+- 現在の WIP 制限が適切か議論する
 
-### Step 7: 終了
+### Step 10: 終了
 - KPT のサマリーとアクションアイテムを表示する
 - `ceremony_end` type: "retro" でセレモニーを終了する（IDLE に戻る）
 - 「次のスプリントサイクルを開始するには /refinement を実行してください」と案内する
 
 ## 成功条件
 - KPT が実施されていること
-- 最低1つのアクションアイテムが策定されていること
+- 最低1つの `reflect` が記録されていること
+- 最低1つの `knowledge_update` が記録されていること
 - ceremonyState が IDLE に戻っていること
+- phase が PLAN に戻っていること
 
 ## 参加エージェント
 - **Scrum Master**: セレモニー進行、メトリクス分析、KPT ファシリテート

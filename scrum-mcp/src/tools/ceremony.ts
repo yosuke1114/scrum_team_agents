@@ -6,7 +6,7 @@ import type {
   CeremonyState,
   ScrumState,
 } from "../types.js";
-import { CEREMONY_STATE_MAP, VALID_TRANSITIONS } from "../types.js";
+import { CEREMONY_STATE_MAP, VALID_TRANSITIONS, ceremonyStateToPhase } from "../types.js";
 import { syncCurrentSprint } from "./sprint.js";
 
 function buildCeremonySummary(state: ScrumState): string {
@@ -98,6 +98,10 @@ export async function ceremonyStart(
     s.currentCeremony = input.type;
     s.ceremonyState = targetState;
 
+    // Phase sync: ceremonyState → phase
+    s.phase = ceremonyStateToPhase(targetState);
+    s.phaseEnteredAt = new Date().toISOString();
+
     // sprint 開始時の追加処理
     if (input.type === "sprint" && s.currentSprint) {
       s.currentSprint.state = "ACTIVE";
@@ -144,8 +148,12 @@ export async function ceremonyEnd(
 
     if (input.type === "retro") {
       s.ceremonyState = "IDLE";
+      s.phase = "PLAN";
+      s.phaseEnteredAt = new Date().toISOString();
     } else if (input.type === "refinement") {
       s.ceremonyState = "IDLE";
+      s.phase = "PLAN";
+      s.phaseEnteredAt = new Date().toISOString();
     }
     // ceremonyState はスプリントライフサイクルの「フェーズ」を表す。
     // currentCeremony はその中で「今進行中のセレモニー」を表す。

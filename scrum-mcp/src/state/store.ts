@@ -1,7 +1,7 @@
 import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { ScrumState } from "../types.js";
-import { DEFAULT_STATE } from "../types.js";
+import { DEFAULT_STATE, ceremonyStateToPhase } from "../types.js";
 
 export class StateStore {
   private state: ScrumState;
@@ -20,6 +20,14 @@ export class StateStore {
       state = JSON.parse(data) as ScrumState;
       // Migration: 新フィールドのデフォルト値
       if (!state.archivedTasks) state.archivedTasks = {};
+      // Migration: Phase system (v0.4)
+      if (!state.phase) {
+        state.phase = ceremonyStateToPhase(state.ceremonyState);
+        state.phaseEnteredAt = new Date().toISOString();
+      }
+      if (!state.oodaCycles) state.oodaCycles = [];
+      if (!state.reflections) state.reflections = [];
+      if (!state.knowledge) state.knowledge = [];
     } catch (err) {
       // ファイルが存在するが読み込めない場合（破損）→ バックアップ作成
       if (err instanceof SyntaxError) {

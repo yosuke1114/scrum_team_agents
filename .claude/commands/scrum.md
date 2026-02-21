@@ -7,50 +7,57 @@
 
 ### Step 1: 現在の状態を取得
 
-`project_status` を実行し、以下を表示する:
+`project_status` + `phase_status` を実行し、以下を表示する:
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
   Scrum Team - インタラクティブモード
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-📊 現在の状態: {ceremonyState}
+🔄 フェーズ: {phase} (PLAN/EXECUTE/EVALUATE/LEARN)
+📊 セレモニー: {ceremonyState}
 🏃 スプリント: {sprint情報 or "なし"}
 📦 バックログ: BACKLOG {n} 件 / READY {n} 件
 ⚡ WIP: IN_PROGRESS {n}/{limit} | IN_REVIEW {n}/{limit}
+📊 OODA: {n}回 | 振返り: {n}件 | 知識: {n}件
 ```
 
 ### Step 2: 利用可能なアクションを提示
 
-ceremonyState に基づいて、次に実行可能なアクションを表示する:
+フェーズ（phase）に基づいて、次に実行可能なアクションを表示する:
 
-**IDLE（初期状態）**
+**PLAN フェーズ（バックログ整理・計画）**
 ```
 利用可能なアクション:
-  [1] 🔍 Refinement  - バックログの整理と READY 判定
-  [2] 📋 Planning    - スプリント計画の策定（READY タスクがある場合）
-  [3] 🔄 Pipeline    - 全セレモニーを一気通貫で実行
+  [1] 🔍 Refinement    - バックログの整理と READY 判定
+  [2] 📋 Planning      - スプリント計画の策定（READY タスクがある場合）
+  [3] 🔄 Pipeline      - 全フェーズを一気通貫で実行
+  [4] 📚 Knowledge     - 知識ベースを確認
 ```
 
-**PLANNING（プランニング完了後）**
-```
-利用可能なアクション:
-  [1] 🚀 Sprint Start - スプリントを開始
-```
-
-**SPRINT_ACTIVE（スプリント実行中）**
+**EXECUTE フェーズ（スプリント実行中）**
 ```
 利用可能なアクション:
   [1] 📝 タスクの実装を続ける
-  [2] 📊 Sprint Review - スプリントレビューを実施
-  [3] ⚡ WIP 状態を確認
-  [4] 🚫 ブロッカーを確認
+  [2] 👁 OODA Observe  - 状況スナップショット
+  [3] 🧭 OODA Orient   - シグナル検出
+  [4] 🎯 OODA Decide   - 推奨アクション
+  [5] 📊 Sprint Review - スプリントレビューを実施
+  [6] ⚡ WIP 状態を確認
 ```
 
-**SPRINT_REVIEW（レビュー完了後）**
+**EVALUATE フェーズ（振り返り）**
 ```
 利用可能なアクション:
-  [1] 🔄 Retro - レトロスペクティブを実施
+  [1] 🔄 Retro         - レトロスペクティブを実施（reflect + KPT）
+  [2] 🪞 Reflect       - 構造化振り返りを記録
+```
+
+**LEARN フェーズ（知識蓄積）**
+```
+利用可能なアクション:
+  [1] 📚 Knowledge Update - 知識ベースに学びを記録
+  [2] 📊 Knowledge Query  - 知識ベースを検索
 ```
 
 ### Step 3: ユーザーの選択を待つ

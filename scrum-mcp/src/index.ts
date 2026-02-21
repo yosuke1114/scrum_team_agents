@@ -14,6 +14,10 @@ import { listTasks, getTask, projectStatus } from "./tools/query.js";
 import { ceremonyReport } from "./tools/report.js";
 import { writeDashboard } from "./tools/dashboard.js";
 import { velocityReport } from "./tools/velocity.js";
+import { phaseStatus, phaseAdvance } from "./tools/phase.js";
+import { oodaObserve, oodaOrient, oodaDecide, oodaLog } from "./tools/ooda.js";
+import { reflect, reflectEvaluate, knowledgeUpdate, knowledgeQuery } from "./tools/reflection.js";
+import { qualityCheck } from "./tools/quality-gate.js";
 
 const STATE_FILE = process.env.SCRUM_STATE_FILE ?? ".scrum/state.json";
 
@@ -22,7 +26,7 @@ const audit = new AuditLog(STATE_FILE);
 
 const server = new McpServer({
   name: "scrum-mcp",
-  version: "0.3.0",
+  version: "0.4.0",
 });
 
 // --- Persona context ---
@@ -114,14 +118,15 @@ server.tool(
 // --- sprint_create ---
 server.tool(
   "sprint_create",
-  "既存の READY タスクを選択してスプリントを作成する",
+  "既存の READY タスクを選択してスプリントを作成する（autoActivate=true で即開始）",
   {
     goal: z.string().min(1),
     taskIds: z.array(z.string()),
+    autoActivate: z.boolean().optional(),
   },
-  async ({ goal, taskIds }) => {
-    const result = await withAudit("sprint_create", { goal, taskCount: taskIds.length }, () =>
-      sprintCreate(store, { goal, taskIds })
+  async ({ goal, taskIds, autoActivate }) => {
+    const result = await withAudit("sprint_create", { goal, taskCount: taskIds.length, autoActivate }, () =>
+      sprintCreate(store, { goal, taskIds, autoActivate: autoActivate ?? false })
     );
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
@@ -379,6 +384,185 @@ server.tool(
   async ({ type, content }) => {
     const result = await withAudit("ceremony_report", { type }, () =>
       ceremonyReport(store, { type, content })
+    );
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
+// ================================================================
+// L1: Phase management tools
+// ================================================================
+
+// --- phase_status ---
+server.tool("phase_status", "現在のフェーズ状態と推奨アクションを取得する", {}, async () => {
+  const result = await withAudit("phase_status", {}, () =>
+    phaseStatus(store)
+  );
+  return {
+    content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+  };
+});
+
+// --- phase_advance ---
+server.tool(
+  "phase_advance",
+  "次のフェーズに手動遷移する（通常は自動遷移）",
+  { force: z.boolean().optional() },
+  async ({ force }) => {
+    const result = await withAudit("phase_advance", { force }, () =>
+      phaseAdvance(store, { force })
+    );
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
+// ================================================================
+// L2: OODA loop tools
+// ================================================================
+
+// --- ooda_observe ---
+server.tool("ooda_observe", "スプリントの現状を観測する（OODA: Observe）", {}, async () => {
+  const result = await withAudit("ooda_observe", {}, () =>
+    oodaObserve(store)
+  );
+  return {
+    content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+  };
+});
+
+// --- ooda_orient ---
+server.tool("ooda_orient", "観測データからパターン・シグナルを分析する（OODA: Orient）", {}, async () => {
+  const result = await withAudit("ooda_orient", {}, () =>
+    oodaOrient(store)
+  );
+  return {
+    content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+  };
+});
+
+// --- ooda_decide ---
+server.tool("ooda_decide", "分析結果から推奨アクションを決定する（OODA: Decide）", {}, async () => {
+  const result = await withAudit("ooda_decide", {}, () =>
+    oodaDecide(store)
+  );
+  return {
+    content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+  };
+});
+
+// --- ooda_log ---
+server.tool(
+  "ooda_log",
+  "OODAサイクルの実行結果を記録する（OODA: Act/Log）",
+  {
+    action: z.string(),
+    outcome: z.enum(["success", "partial", "failed"]),
+    trigger: z.enum(["task_transition", "blocker", "wip_threshold", "manual"]).optional(),
+  },
+  async ({ action, outcome, trigger }) => {
+    const result = await withAudit("ooda_log", { action, outcome, trigger }, () =>
+      oodaLog(store, { action, outcome, trigger })
+    );
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
+// ================================================================
+// L3: Meta-cognition tools
+// ================================================================
+
+// --- reflect ---
+server.tool(
+  "reflect",
+  "スプリントの振り返りを構造化記録する（何が・なぜ・次に）",
+  {
+    trigger: z.enum(["low_completion", "blocker", "repeated_pattern", "phase_end"]),
+    what: z.string(),
+    why: z.string(),
+    action: z.string(),
+  },
+  async ({ trigger, what, why, action }) => {
+    const result = await withAudit("reflect", { trigger }, () =>
+      reflect(store, { trigger, what, why, action })
+    );
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
+// --- reflect_evaluate ---
+server.tool(
+  "reflect_evaluate",
+  "過去の振り返りの有効性を評価する",
+  {
+    reflectionId: z.string(),
+    effectiveness: z.enum(["effective", "ineffective"]),
+  },
+  async ({ reflectionId, effectiveness }) => {
+    const result = await withAudit("reflect_evaluate", { reflectionId, effectiveness }, () =>
+      reflectEvaluate(store, { reflectionId, effectiveness })
+    );
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
+// --- knowledge_update ---
+server.tool(
+  "knowledge_update",
+  "知識ベースにインサイトを記録・強化する",
+  {
+    category: z.enum(["pattern", "antipattern", "technique", "constraint"]),
+    insight: z.string(),
+  },
+  async ({ category, insight }) => {
+    const result = await withAudit("knowledge_update", { category, insight }, () =>
+      knowledgeUpdate(store, { category, insight })
+    );
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
+// --- knowledge_query ---
+server.tool(
+  "knowledge_query",
+  "知識ベースを検索する",
+  {
+    query: z.string().optional(),
+    category: z.enum(["pattern", "antipattern", "technique", "constraint"]).optional(),
+  },
+  async ({ query, category }) => {
+    const result = await withAudit("knowledge_query", { query, category }, () =>
+      knowledgeQuery(store, { query, category })
+    );
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
+// ================================================================
+// L4: Quality gate tools
+// ================================================================
+
+// --- quality_check ---
+server.tool(
+  "quality_check",
+  "タスクの品質チェック（受入条件・見積もり・担当者）",
+  { taskId: z.string() },
+  async ({ taskId }) => {
+    const result = await withAudit("quality_check", { taskId }, () =>
+      qualityCheck(store, { taskId })
     );
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],

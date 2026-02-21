@@ -4,6 +4,7 @@ import type {
   Task,
   TaskState,
   Priority,
+  Phase,
   CeremonyState,
 } from "../types.js";
 import { VALID_TRANSITIONS } from "../types.js";
@@ -119,6 +120,7 @@ export async function getTask(
 // --- project_status ---
 
 interface ProjectStatusData {
+  phase: Phase;
   ceremonyState: CeremonyState;
   currentCeremony: string | null;
   nextCeremonies: CeremonyState[];
@@ -200,6 +202,7 @@ export async function projectStatus(
     .map((t) => ({ id: t.id, title: t.title, assignee: t.assignee }));
 
   const data: ProjectStatusData = {
+    phase: s.phase,
     ceremonyState: s.ceremonyState,
     currentCeremony: s.currentCeremony,
     nextCeremonies,
@@ -215,7 +218,7 @@ export async function projectStatus(
   const lines: string[] = [
     `📊 プロジェクト状況: ${s.config.projectName}`,
     `━━━━━━━━━━━━━━━━━━━━`,
-    `🔄 セレモニー: ${s.ceremonyState}${s.currentCeremony ? ` (${s.currentCeremony} 実行中)` : ""}`,
+    `🔄 フェーズ: ${s.phase} | セレモニー: ${s.ceremonyState}${s.currentCeremony ? ` (${s.currentCeremony} 実行中)` : ""}`,
     `   次に可能: ${nextCeremonies.join(", ")}`,
   ];
 
