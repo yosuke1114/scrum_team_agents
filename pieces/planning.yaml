@@ -1,0 +1,72 @@
+name: planning
+description: スプリントプランニング - ゴール策定とスプリント作成
+
+mcp_servers:
+  scrum-mcp:
+    command: node
+    args: ["scrum-mcp/dist/index.js"]
+    env:
+      SCRUM_STATE_FILE: ".scrum/state.json"
+
+movements:
+  - name: readiness-check
+    persona: scrum-master
+    edit: false
+    allowed_tools:
+      - project_status
+      - list_tasks
+    instructions: |
+      1. `project_status` でプロジェクト状況を確認する
+      2. `list_tasks` state: "READY" で READY タスクを一覧表示
+      3. READY タスクが 0 件 → 「先に /refinement を実施してください」と案内して停止
+    on_failure: halt
+
+  - name: ceremony-open
+    persona: scrum-master
+    edit: false
+    allowed_tools:
+      - ceremony_start
+    instructions: |
+      `ceremony_start` type: "planning" を実行する。
+
+  - name: goal-and-selection
+    persona: product-owner
+    edit: false
+    allowed_tools:
+      - list_tasks
+      - get_task
+      - wip_status
+    instructions: |
+      1. READY タスクを優先度順に表示する
+      2. `wip_status` で WIP 制限を確認する
+      3. ユーザーにスプリントゴール（1文の達成目標）を確認する
+      4. スプリントに含めるタスクをユーザーと協議して選択する:
+         - 優先度 high を優先
+         - WIP 制限を考慮した数量
+         - ゴールとの整合性
+
+  - name: sprint-creation
+    persona: scrum-master
+    edit: false
+    allowed_tools:
+      - sprint_create
+    instructions: |
+      `sprint_create` を実行する:
+      - goal: ユーザーと合意したゴール
+      - tasks: 選択したタスク（title, description, acceptanceCriteria, priority）
+      作成されたスプリントの内容を表示する。
+
+  - name: summary-and-close
+    persona: scrum-master
+    edit: false
+    allowed_tools:
+      - ceremony_report
+      - ceremony_end
+    instructions: |
+      1. スプリントのゴール、タスク数、優先度内訳を表示
+      2. `ceremony_report` type: "planning" でサマリーを保存
+      3. `ceremony_end` type: "planning" でセレモニーを終了
+      4. 「次は /sprint-start でスプリントを開始してください」と案内
+    success_criteria:
+      - スプリントが PLANNING 状態で作成されていること
+      - 最低1つのタスクがスプリントに含まれていること
