@@ -91,8 +91,8 @@ describe("StateStore", () => {
     expect(peeked).toBe(peeked2);
   });
 
-  it("不正な JSON ファイルからはデフォルト状態で初期化される", async () => {
-    const { writeFile } = await import("node:fs/promises");
+  it("不正な JSON ファイルからはデフォルト状態で初期化される＋バックアップ作成", async () => {
+    const { writeFile, readdir } = await import("node:fs/promises");
     const badFile = "/tmp/scrum-test-store-bad.json";
     await writeFile(badFile, "INVALID JSON {{{", "utf-8");
 
@@ -101,7 +101,22 @@ describe("StateStore", () => {
     expect(state.ceremonyState).toBe("IDLE");
     expect(state.currentCeremony).toBeNull();
 
+    // H3: 破損ファイルのバックアップが作成される
+    const files = await readdir("/tmp");
+    const backups = files
+      .filter((f) => f.startsWith("scrum-test-store-bad.json.corrupt."))
+      .map((f) => `/tmp/${f}`);
+    expect(backups.length).toBeGreaterThanOrEqual(1);
+
+    // バックアップの中身が元の破損データと一致
+    const backupContent = await readFile(backups[0], "utf-8");
+    expect(backupContent).toBe("INVALID JSON {{{");
+
+    // cleanup
     try { await unlink(badFile); } catch { /* ignore */ }
+    for (const b of backups) {
+      try { await unlink(b); } catch { /* ignore */ }
+    }
   });
 
   it("update は更新後の状態コピーを返す", async () => {

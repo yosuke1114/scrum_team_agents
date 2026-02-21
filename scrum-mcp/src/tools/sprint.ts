@@ -28,6 +28,14 @@ export async function sprintCreate(
 ): Promise<ToolResult> {
   const s = store.peek();
 
+  // ゴールの空白バリデーション
+  if (input.goal.trim().length === 0) {
+    return {
+      ok: false,
+      error: "スプリントゴールが空です。有効なゴールを指定してください。",
+    };
+  }
+
   // 重複チェック
   if (s.currentSprint) {
     if (s.currentSprint.state === "ACTIVE") {
@@ -42,6 +50,21 @@ export async function sprintCreate(
         error: "プランニング中のスプリントがあります。",
       };
     }
+  }
+
+  // 重複タスク ID チェック
+  const uniqueIds = new Set(input.taskIds);
+  if (uniqueIds.size !== input.taskIds.length) {
+    const seen = new Set<string>();
+    const dups: string[] = [];
+    for (const id of input.taskIds) {
+      if (seen.has(id)) dups.push(id);
+      seen.add(id);
+    }
+    return {
+      ok: false,
+      error: `重複するタスク ID があります: ${[...new Set(dups)].join(", ")}`,
+    };
   }
 
   // タスク ID 検証

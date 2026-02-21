@@ -20,7 +20,18 @@ export class StateStore {
       state = JSON.parse(data) as ScrumState;
       // Migration: 新フィールドのデフォルト値
       if (!state.archivedTasks) state.archivedTasks = {};
-    } catch {
+    } catch (err) {
+      // ファイルが存在するが読み込めない場合（破損）→ バックアップ作成
+      if (err instanceof SyntaxError) {
+        const backupPath = `${filePath}.corrupt.${Date.now()}`;
+        try {
+          const raw = await readFile(filePath, "utf-8");
+          await writeFile(backupPath, raw, "utf-8");
+          console.error(`[scrum-mcp] 状態ファイル破損を検出。バックアップ: ${backupPath}`);
+        } catch {
+          // バックアップ自体が失敗しても初期化は続行
+        }
+      }
       state = structuredClone(DEFAULT_STATE);
     }
     return new StateStore(filePath, state);

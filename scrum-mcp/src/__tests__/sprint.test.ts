@@ -105,6 +105,20 @@ describe("sprint_create", () => {
     expect(result.error).toContain("見つかりません");
   });
 
+  it("重複タスク ID はエラー", async () => {
+    const ids = await createReadyTasks(1);
+    const result = await sprintCreate(store, { goal: "Sprint 1", taskIds: [ids[0], ids[0]] });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("重複");
+  });
+
+  it("空白のみのゴールはエラー", async () => {
+    const ids = await createReadyTasks(1);
+    const result = await sprintCreate(store, { goal: "   ", taskIds: ids });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("スプリントゴールが空");
+  });
+
   it("READY でないタスクはエラー", async () => {
     const r = await taskCreate(store, { title: "Backlog", description: "d", acceptanceCriteria: [], priority: "medium" });
     const id = (r.data as { taskId: string }).taskId;
