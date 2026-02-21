@@ -9,6 +9,8 @@ import { taskCreate, taskUpdate } from "./tools/task.js";
 import { githubSync } from "./tools/github.js";
 import { metricsReport } from "./tools/metrics.js";
 import { wipStatus } from "./tools/wip.js";
+import { listTasks, getTask, projectStatus } from "./tools/query.js";
+import { ceremonyReport } from "./tools/report.js";
 
 const STATE_FILE = process.env.SCRUM_STATE_FILE ?? ".scrum/state.json";
 
@@ -179,6 +181,70 @@ server.tool("wip_status", "WIP状態を確認する", {}, async () => {
     content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
   };
 });
+
+// --- list_tasks ---
+server.tool(
+  "list_tasks",
+  "タスクをフィルタ付きで一覧表示する",
+  {
+    state: taskStateSchema.optional(),
+    priority: prioritySchema.optional(),
+    assignee: z.string().optional(),
+    sprintId: z.string().optional(),
+  },
+  async ({ state, priority, assignee, sprintId }) => {
+    const result = await listTasks(store, { state, priority, assignee, sprintId });
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
+// --- get_task ---
+server.tool(
+  "get_task",
+  "タスクの詳細情報を取得する",
+  { taskId: z.string() },
+  async ({ taskId }) => {
+    const result = await getTask(store, { taskId });
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
+
+// --- project_status ---
+server.tool("project_status", "プロジェクト全体の状況を取得する", {}, async () => {
+  const result = await projectStatus(store);
+  return {
+    content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+  };
+});
+
+// --- ceremony_report ---
+const reportTypeSchema = z.enum([
+  "refinement",
+  "planning",
+  "sprint",
+  "review",
+  "retro",
+  "pipeline",
+]);
+
+server.tool(
+  "ceremony_report",
+  "セレモニーの結果をレポートとして保存する",
+  {
+    type: reportTypeSchema,
+    content: z.string(),
+  },
+  async ({ type, content }) => {
+    const result = await ceremonyReport(store, { type, content });
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  }
+);
 
 // --- Start server ---
 const transport = new StdioServerTransport();
