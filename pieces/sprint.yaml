@@ -1,0 +1,83 @@
+name: sprint
+description: スプリント実行 - タスクの実装とレビュー
+
+mcp_servers:
+  scrum-mcp:
+    command: node
+    args: ["scrum-mcp/dist/index.js"]
+    env:
+      SCRUM_STATE_FILE: ".scrum/state.json"
+
+movements:
+  - name: kickoff
+    persona: scrum-master
+    edit: false
+    allowed_tools:
+      - project_status
+      - ceremony_start
+      - list_tasks
+      - wip_status
+      - github_sync
+    instructions: |
+      1. `project_status` で currentSprint が PLANNING であることを確認
+      2. `ceremony_start` type: "sprint" でスプリント開始
+      3. `list_tasks` sprintId: (現在のスプリントID) でタスク一覧を表示
+      4. 各タスクの `github_sync` action: "update" でラベル同期
+      5. `wip_status` で WIP 制限を確認
+      6. キックオフサマリー（ゴール、タスク一覧、WIP 制限）を表示
+    on_failure: halt
+
+  - name: implementation
+    persona: developer
+    edit: true
+    allowed_tools:
+      - list_tasks
+      - get_task
+      - task_update
+      - wip_status
+      - github_sync
+    instructions: |
+      タスクを1つずつ実装する。各タスクの作業フロー:
+      1. `list_tasks` state: "TODO" で作業可能タスクを確認
+      2. `wip_status` で WIP 制限を確認（超過ならスキップ）
+      3. `get_task` で受入条件を確認
+      4. `task_update` state: "IN_PROGRESS", assignee: "developer"
+      5. 受入条件を満たすコードとテストを実装
+      6. `task_update` state: "IN_REVIEW"
+      7. `github_sync` action: "update" でラベル同期
+
+      全 TODO タスクを処理するまで繰り返す。
+      ブロッカー発生時は `task_update` state: "BLOCKED" に遷移。
+
+  - name: code-review
+    persona: reviewer
+    edit: false
+    allowed_tools:
+      - list_tasks
+      - get_task
+      - task_update
+    instructions: |
+      IN_REVIEW タスクをレビューする:
+      1. `list_tasks` state: "IN_REVIEW" でレビュー待ちを確認
+      2. 各タスクについて `get_task` で受入条件を確認
+      3. レビュー観点: 正確性、セキュリティ、テスト、保守性、パフォーマンス
+      4. 承認 → `task_update` state: "DONE"
+      5. 差し戻し → `task_update` state: "IN_PROGRESS" + 具体的フィードバック
+
+      差し戻しがあれば implementation movement に戻る。
+    aggregate:
+      loop_until: "IN_REVIEW タスクが 0 件"
+      on_reject: goto implementation
+
+  - name: blocker-check
+    persona: scrum-master
+    edit: false
+    allowed_tools:
+      - list_tasks
+      - wip_status
+      - project_status
+    instructions: |
+      スプリント終了前のブロッカー確認:
+      1. `list_tasks` state: "BLOCKED" でブロッカーを確認
+      2. ブロッカーがあればユーザーに報告し対応を確認
+      3. `project_status` で全体進捗を表示

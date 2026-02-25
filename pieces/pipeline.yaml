@@ -1,0 +1,38 @@
+name: pipeline
+description: スプリントサイクル一気通貫パイプライン
+
+mcp_servers:
+  scrum-mcp:
+    command: node
+    args: ["scrum-mcp/dist/index.js"]
+    env:
+      SCRUM_STATE_FILE: ".scrum/state.json"
+
+# パイプラインは各セレモニー Piece を順に実行する
+compose:
+  - piece: refinement
+  - piece: planning
+  - piece: sprint
+  - piece: review
+  - piece: retro
+
+on_error:
+  strategy: halt
+  message: |
+    パイプラインが中断しました。
+    `/pipeline from: "{次のセレモニー}"` で中断したセレモニーから再開できます。
+
+on_complete:
+  allowed_tools:
+    - ceremony_report
+  instructions: |
+    パイプライン完了サマリーを表示:
+    ```
+    パイプライン完了:
+    ✓ Refinement  - READY タスク: N 件
+    ✓ Planning    - スプリントゴール: "..."
+    ✓ Sprint      - 完了タスク: N/M 件
+    ✓ Review      - 受入: N 件, 差し戻し: N 件
+    ✓ Retro       - アクション: N 件
+    ```
+    `ceremony_report` type: "pipeline" で全体レポートを保存。

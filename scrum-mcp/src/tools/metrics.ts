@@ -32,16 +32,43 @@ export async function metricsReport(
     }
   }
 
+  // 完了/中止スプリントでスナップショットがあればそれを使用（正確な完了時点の値）
+  if (
+    (sprint.state === "COMPLETED" || sprint.state === "CANCELLED") &&
+    sprint.metrics
+  ) {
+    const summary = [
+      `📊 スプリントメトリクス: ${sprint.id} (スナップショット)`,
+      `🎯 ゴール: ${sprint.goal}`,
+      `📈 完了率: ${sprint.metrics.completionRate}% (${sprint.metrics.completedTasks}/${sprint.metrics.totalTasks})`,
+      `📐 ポイント: ${sprint.metrics.completedPoints}/${sprint.metrics.totalPoints} pt`,
+    ].join("\n");
+
+    return {
+      ok: true,
+      message: summary,
+      data: sprint.metrics,
+    };
+  }
+
   const tasksByState: Partial<Record<TaskState, number>> = {};
   const tasksByPriority: Partial<Record<Priority, number>> = {};
   let completedTasks = 0;
+  let totalPoints = 0;
+  let completedPoints = 0;
 
   for (const id of sprint.tasks) {
-    const task = s.tasks[id];
+    // tasks または archivedTasks から検索
+    const task = s.tasks[id] ?? s.archivedTasks[id];
     if (task) {
       tasksByState[task.state] = (tasksByState[task.state] ?? 0) + 1;
       tasksByPriority[task.priority] = (tasksByPriority[task.priority] ?? 0) + 1;
-      if (task.state === "DONE") completedTasks++;
+      const pts = task.points ?? 0;
+      totalPoints += pts;
+      if (task.state === "DONE") {
+        completedTasks++;
+        completedPoints += pts;
+      }
     }
   }
 
@@ -53,18 +80,18 @@ export async function metricsReport(
     sprintId: sprint.id,
     totalTasks,
     completedTasks,
-    totalPoints: 0,
-    completedPoints: 0,
+    totalPoints,
+    completedPoints,
     completionRate,
     tasksByState,
     tasksByPriority,
   };
 
-  // サマリー文字列
   const summary = [
     `📊 スプリントメトリクス: ${sprint.id}`,
     `🎯 ゴール: ${sprint.goal}`,
     `📈 完了率: ${completionRate}% (${completedTasks}/${totalTasks})`,
+    `📐 ポイント: ${completedPoints}/${totalPoints} pt`,
     "",
     "📋 状態別:",
     ...Object.entries(tasksByState).map(

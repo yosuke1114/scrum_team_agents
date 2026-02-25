@@ -217,3 +217,55 @@ describe("ceremony_end ガード", () => {
     expect(result.error).toContain("実行中です");
   });
 });
+
+describe("ceremony_end 追加ケース", () => {
+  it("planning の ceremony_end で PLANNING 状態が維持される", async () => {
+    await ceremonyStart(store, { type: "planning" });
+    const result = await ceremonyEnd(store, { type: "planning" });
+    expect(result.ok).toBe(true);
+    const state = store.getState();
+    expect(state.currentCeremony).toBeNull();
+    expect(state.ceremonyState).toBe("PLANNING");
+  });
+
+  it("セレモニー未実行で ceremony_end はエラー", async () => {
+    const result = await ceremonyEnd(store, { type: "refinement" });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("実行中ではありません");
+  });
+});
+
+describe("ceremony_start 前提条件", () => {
+  it("review はアクティブスプリントがない場合エラー", async () => {
+    await store.update((s) => {
+      s.ceremonyState = "SPRINT_ACTIVE";
+      s.currentCeremony = "sprint";
+    });
+    const result = await ceremonyStart(store, { type: "review" });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("アクティブまたは中止済みのスプリントがありません");
+  });
+
+  it("retro はスプリントが PLANNING だとエラー", async () => {
+    await store.update((s) => {
+      s.ceremonyState = "SPRINT_REVIEW";
+      s.currentSprint = {
+        id: "sprint-1", number: 1, goal: "test", tasks: [],
+        state: "PLANNING", startedAt: null, completedAt: null,
+      };
+    });
+    const result = await ceremonyStart(store, { type: "retro" });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("アクティブ、完了、または中止状態ではありません");
+  });
+
+  it("sprint はスプリント未作成でエラー", async () => {
+    await store.update((s) => {
+      s.ceremonyState = "PLANNING";
+      s.currentCeremony = null;
+    });
+    const result = await ceremonyStart(store, { type: "sprint" });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("スプリントが作成されていません");
+  });
+});

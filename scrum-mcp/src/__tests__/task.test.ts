@@ -34,10 +34,25 @@ describe("task_create", () => {
     expect(taskIds).toHaveLength(1);
 
     const task = state.tasks[taskIds[0]];
+    expect(task.id).toMatch(/^task-[0-9a-f-]{36}$/);
     expect(task.state).toBe("BACKLOG");
     expect(task.priority).toBe("high");
     expect(task.acceptanceCriteria).toEqual(["Google ログイン", "GitHub ログイン"]);
     expect(task.assignee).toBeNull();
+    expect(task.points).toBeNull();
+  });
+
+  it("ポイント付きでタスクを作成できる", async () => {
+    const result = await taskCreate(store, {
+      title: "ポイント付き",
+      description: "desc",
+      acceptanceCriteria: [],
+      priority: "medium",
+      points: 5,
+    });
+    expect(result.ok).toBe(true);
+    const id = (result.data as { taskId: string }).taskId;
+    expect(store.getState().tasks[id].points).toBe(5);
   });
 
   it("複数タスクを作成できる", async () => {
@@ -96,6 +111,25 @@ describe("task_update", () => {
     const state = store.getState();
     expect(state.tasks[taskId].state).toBe("IN_PROGRESS");
     expect(state.tasks[taskId].assignee).toBe("developer-1");
+  });
+
+  it("TODO → BACKLOG への降格遷移", async () => {
+    const taskId = await createTestTask();
+    await taskUpdate(store, { taskId, state: "READY" });
+    await taskUpdate(store, { taskId, state: "TODO" });
+
+    const result = await taskUpdate(store, { taskId, state: "BACKLOG" });
+    expect(result.ok).toBe(true);
+    expect(store.getState().tasks[taskId].state).toBe("BACKLOG");
+  });
+
+  it("READY → BACKLOG への降格遷移", async () => {
+    const taskId = await createTestTask();
+    await taskUpdate(store, { taskId, state: "READY" });
+
+    const result = await taskUpdate(store, { taskId, state: "BACKLOG" });
+    expect(result.ok).toBe(true);
+    expect(store.getState().tasks[taskId].state).toBe("BACKLOG");
   });
 
   it("BACKLOG → IN_PROGRESS の不正遷移はエラー", async () => {
@@ -179,5 +213,59 @@ describe("task_update", () => {
     const r3 = await taskUpdate(store, { taskId: ids[2], state: "IN_PROGRESS" });
     expect(r3.ok).toBe(true);
     expect(r3.message).toContain("WIP制限警告");
+  });
+
+  it("状態変更なしで優先度のみ更新できる", async () => {
+    const taskId = await createTestTask();
+    const result = await taskUpdate(store, { taskId, priority: "high" });
+    expect(result.ok).toBe(true);
+    expect(store.getState().tasks[taskId].priority).toBe("high");
+    expect(store.getState().tasks[taskId].state).toBe("BACKLOG");
+  });
+
+  it("状態変更なしでポイントのみ更新できる", async () => {
+    const taskId = await createTestTask();
+    const result = await taskUpdate(store, { taskId, points: 8 });
+    expect(result.ok).toBe(true);
+    expect(store.getState().tasks[taskId].points).toBe(8);
+  });
+
+  it("更新フィールドなしでエラー", async () => {
+    const taskId = await createTestTask();
+    const result = await taskUpdate(store, { taskId });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("更新");
+  });
+
+  it("M6: 負のポイントでエラー", async () => {
+    const taskId = await createTestTask();
+    const result = await taskUpdate(store, { taskId, points: -3 });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("0以上");
+  });
+});
+
+describe("task_create バリデーション", () => {
+  it("M6: 負のポイントで作成できない", async () => {
+    const result = await taskCreate(store, {
+      title: "Test",
+      description: "desc",
+      acceptanceCriteria: [],
+      priority: "medium",
+      points: -1,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("0以上");
+  });
+
+  it("0ポイントで作成できる", async () => {
+    const result = await taskCreate(store, {
+      title: "Zero pts",
+      description: "desc",
+      acceptanceCriteria: [],
+      priority: "medium",
+      points: 0,
+    });
+    expect(result.ok).toBe(true);
   });
 });

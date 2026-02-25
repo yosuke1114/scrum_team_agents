@@ -1,0 +1,80 @@
+name: review
+description: スプリントレビュー - 成果確認と受入判定
+
+mcp_servers:
+  scrum-mcp:
+    command: node
+    args: ["scrum-mcp/dist/index.js"]
+    env:
+      SCRUM_STATE_FILE: ".scrum/state.json"
+
+movements:
+  - name: state-check
+    persona: scrum-master
+    edit: false
+    allowed_tools:
+      - project_status
+    instructions: |
+      `project_status` で currentSprint が ACTIVE であることを確認する。
+      ACTIVE でなければ「アクティブなスプリントがありません」と案内して停止。
+    on_failure: halt
+
+  - name: ceremony-open
+    persona: scrum-master
+    edit: false
+    allowed_tools:
+      - ceremony_start
+      - metrics_report
+    instructions: |
+      1. `ceremony_start` type: "review" を実行（sprint→review 暗黙遷移）
+      2. `metrics_report` でスプリントメトリクスを表示
+
+  - name: acceptance-review
+    persona: product-owner
+    edit: false
+    allowed_tools:
+      - list_tasks
+      - get_task
+      - task_update
+    instructions: |
+      受入判定（PO 観点: 受入条件の充足）:
+      1. `list_tasks` state: "DONE" sprintId: (現在のID) で完了タスクを確認
+      2. 各タスクについて `get_task` で受入条件を確認
+      3. 受入条件すべて充足 → 受入 OK
+      4. 未充足あり → `task_update` state: "IN_PROGRESS" に差し戻し + 理由明記
+
+  - name: quality-review
+    persona: reviewer
+    edit: false
+    allowed_tools:
+      - list_tasks
+      - get_task
+    instructions: |
+      品質レビュー（Reviewer 観点: コード品質）:
+      1. `list_tasks` state: "DONE" で完了タスクを確認
+      2. コード品質、テストカバレッジ、セキュリティの観点で最終確認
+      3. 問題があれば PO に報告（Reviewer は Review 中に task_update しない）
+    aggregate:
+      parallel_with: acceptance-review
+      condition: all("approved")
+      on_any_reject: Developer に差し戻し（両者のフィードバックを統合）
+
+  - name: sprint-close
+    persona: scrum-master
+    edit: false
+    allowed_tools:
+      - list_tasks
+      - github_sync
+      - sprint_complete
+      - ceremony_report
+      - ceremony_end
+    instructions: |
+      1. DONE タスクで GitHub Issue が紐づいているものを `github_sync` action: "close"
+      2. `sprint_complete` sprintId: (現在のID) でスプリント完了
+      3. 完了メトリクス（完了率、完了タスク数）を表示
+      4. `ceremony_report` type: "review" で結果を保存
+      5. `ceremony_end` type: "review" でセレモニー終了
+      6. 「次は /retro でレトロスペクティブを実施してください」と案内
+    success_criteria:
+      - スプリントが COMPLETED 状態であること
+      - DONE タスクの受入判定が完了していること

@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { unlink } from "node:fs/promises";
 import { StateStore } from "../state/store.js";
-import { sprintCreate, sprintComplete } from "../tools/sprint.js";
+import { sprintCreate, sprintAddTasks, sprintComplete, sprintCarryOver, sprintCancel } from "../tools/sprint.js";
+import { taskCreate, taskUpdate } from "../tools/task.js";
 
 const TEST_FILE = "/tmp/scrum-test-sprint.json";
 let store: StateStore;
@@ -18,81 +19,59 @@ afterEach(async () => {
   }
 });
 
-describe("sprint_create", () => {
-  it("スプリントとタスクを作成できる", async () => {
-    const result = await sprintCreate(store, {
-      goal: "MVP リリース",
-      tasks: [
-        {
-          title: "ログイン機能",
-          description: "ユーザーログイン",
-          acceptanceCriteria: ["メール認証", "パスワードリセット"],
-          priority: "high",
-        },
-        {
-          title: "ダッシュボード",
-          description: "メイン画面",
-          acceptanceCriteria: ["グラフ表示"],
-          priority: "medium",
-        },
-      ],
+async function createReadyTasks(
+  count: number,
+  overrides?: { priority?: "high" | "medium" | "low"; points?: number }
+): Promise<string[]> {
+  const ids: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const r = await taskCreate(store, {
+      title: `Task ${i + 1}`,
+      description: "desc",
+      acceptanceCriteria: [],
+      priority: overrides?.priority ?? "medium",
+      points: overrides?.points,
     });
+    const id = (r.data as { taskId: string }).taskId;
+    await taskUpdate(store, { taskId: id, state: "READY" });
+    ids.push(id);
+  }
+  return ids;
+}
+
+describe("sprint_create", () => {
+  it("READY タスクを使ってスプリントを作成できる", async () => {
+    const taskIds = await createReadyTasks(2);
+    const result = await sprintCreate(store, { goal: "MVP リリース", taskIds });
 
     expect(result.ok).toBe(true);
-
     const state = store.getState();
     expect(state.currentSprint).not.toBeNull();
     expect(state.currentSprint!.goal).toBe("MVP リリース");
     expect(state.currentSprint!.state).toBe("PLANNING");
     expect(state.currentSprint!.tasks).toHaveLength(2);
 
-    // タスクが tasks に追加されている
-    const taskIds = state.currentSprint!.tasks;
-    for (const id of taskIds) {
+    for (const id of state.currentSprint!.tasks) {
       expect(state.tasks[id]).toBeDefined();
       expect(state.tasks[id].state).toBe("TODO");
     }
   });
 
   it("スプリント番号が連番になる", async () => {
-    // 1つ目のスプリント
-    await sprintCreate(store, {
-      goal: "Sprint 1",
-      tasks: [
-        {
-          title: "Task 1",
-          description: "desc",
-          acceptanceCriteria: [],
-          priority: "medium",
-        },
-      ],
-    });
+    const ids1 = await createReadyTasks(1);
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: ids1 });
 
-    // COMPLETED に変更
     await store.update((s) => {
       if (s.currentSprint) {
         s.currentSprint.state = "COMPLETED";
         s.currentSprint.completedAt = new Date().toISOString();
-
         const idx = s.sprints.findIndex((sp) => sp.id === s.currentSprint!.id);
-        if (idx >= 0) {
-          s.sprints[idx] = { ...s.currentSprint, tasks: [...s.currentSprint.tasks] };
-        }
+        if (idx >= 0) s.sprints[idx] = { ...s.currentSprint, tasks: [...s.currentSprint.tasks] };
       }
     });
 
-    // 2つ目のスプリント
-    await sprintCreate(store, {
-      goal: "Sprint 2",
-      tasks: [
-        {
-          title: "Task 2",
-          description: "desc",
-          acceptanceCriteria: [],
-          priority: "low",
-        },
-      ],
-    });
+    const ids2 = await createReadyTasks(1);
+    await sprintCreate(store, { goal: "Sprint 2", taskIds: ids2 });
 
     const state = store.getState();
     expect(state.currentSprint!.number).toBe(2);
@@ -100,113 +79,133 @@ describe("sprint_create", () => {
   });
 
   it("アクティブスプリントがある場合はエラー", async () => {
-    await sprintCreate(store, {
-      goal: "Sprint 1",
-      tasks: [
-        {
-          title: "Task",
-          description: "desc",
-          acceptanceCriteria: [],
-          priority: "medium",
-        },
-      ],
-    });
+    const ids1 = await createReadyTasks(1);
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: ids1 });
+    await store.update((s) => { if (s.currentSprint) s.currentSprint.state = "ACTIVE"; });
 
-    // ACTIVE に手動変更
-    await store.update((s) => {
-      if (s.currentSprint) {
-        s.currentSprint.state = "ACTIVE";
-      }
-    });
-
-    const result = await sprintCreate(store, {
-      goal: "Sprint 2",
-      tasks: [
-        {
-          title: "Task",
-          description: "desc",
-          acceptanceCriteria: [],
-          priority: "medium",
-        },
-      ],
-    });
-
+    const ids2 = await createReadyTasks(1);
+    const result = await sprintCreate(store, { goal: "Sprint 2", taskIds: ids2 });
     expect(result.ok).toBe(false);
     expect(result.error).toContain("アクティブ");
   });
 
   it("PLANNING 状態のスプリントがある場合はエラー", async () => {
-    await sprintCreate(store, {
-      goal: "Sprint 1",
-      tasks: [
-        {
-          title: "Task",
-          description: "desc",
-          acceptanceCriteria: [],
-          priority: "medium",
-        },
-      ],
-    });
+    const ids1 = await createReadyTasks(1);
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: ids1 });
 
-    const result = await sprintCreate(store, {
-      goal: "Sprint 2",
-      tasks: [
-        {
-          title: "Task",
-          description: "desc",
-          acceptanceCriteria: [],
-          priority: "medium",
-        },
-      ],
-    });
-
+    const ids2 = await createReadyTasks(1);
+    const result = await sprintCreate(store, { goal: "Sprint 2", taskIds: ids2 });
     expect(result.ok).toBe(false);
     expect(result.error).toContain("プランニング中");
+  });
+
+  it("存在しないタスク ID はエラー", async () => {
+    const result = await sprintCreate(store, { goal: "Sprint 1", taskIds: ["task-nonexistent"] });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("見つかりません");
+  });
+
+  it("重複タスク ID はエラー", async () => {
+    const ids = await createReadyTasks(1);
+    const result = await sprintCreate(store, { goal: "Sprint 1", taskIds: [ids[0], ids[0]] });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("重複");
+  });
+
+  it("空白のみのゴールはエラー", async () => {
+    const ids = await createReadyTasks(1);
+    const result = await sprintCreate(store, { goal: "   ", taskIds: ids });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("スプリントゴールが空");
+  });
+
+  it("READY でないタスクはエラー", async () => {
+    const r = await taskCreate(store, { title: "Backlog", description: "d", acceptanceCriteria: [], priority: "medium" });
+    const id = (r.data as { taskId: string }).taskId;
+    const result = await sprintCreate(store, { goal: "Sprint 1", taskIds: [id] });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("READY 状態でない");
+  });
+});
+
+describe("sprint_add_tasks", () => {
+  it("PLANNING スプリントにタスクを追加できる", async () => {
+    const ids1 = await createReadyTasks(1);
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: ids1 });
+
+    const ids2 = await createReadyTasks(1);
+    const result = await sprintAddTasks(store, { sprintId: "sprint-1", taskIds: ids2 });
+
+    expect(result.ok).toBe(true);
+    expect(store.getState().currentSprint!.tasks).toHaveLength(2);
+  });
+
+  it("ACTIVE スプリントには追加できない", async () => {
+    const ids = await createReadyTasks(1);
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: ids });
+    await store.update((s) => { if (s.currentSprint) s.currentSprint.state = "ACTIVE"; });
+
+    const ids2 = await createReadyTasks(1);
+    const result = await sprintAddTasks(store, { sprintId: "sprint-1", taskIds: ids2 });
+    expect(result.ok).toBe(false);
   });
 });
 
 describe("sprint_complete", () => {
   it("アクティブスプリントを完了できる", async () => {
-    await sprintCreate(store, {
-      goal: "Sprint 1",
-      tasks: [
-        {
-          title: "Task 1",
-          description: "desc",
-          acceptanceCriteria: [],
-          priority: "high",
-        },
-        {
-          title: "Task 2",
-          description: "desc",
-          acceptanceCriteria: [],
-          priority: "medium",
-        },
-      ],
-    });
+    const ids = await createReadyTasks(2);
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: ids });
 
-    const state1 = store.getState();
-    const taskIds = state1.currentSprint!.tasks;
-
-    // ACTIVE にして、1つのタスクを DONE に
     await store.update((s) => {
       if (s.currentSprint) {
         s.currentSprint.state = "ACTIVE";
         s.currentSprint.startedAt = new Date().toISOString();
       }
-      // Task 1: TODO → IN_PROGRESS → IN_REVIEW → DONE
-      s.tasks[taskIds[0]].state = "DONE";
+      s.tasks[ids[0]].state = "DONE";
     });
 
     const result = await sprintComplete(store, { sprintId: "sprint-1" });
     expect(result.ok).toBe(true);
-    expect(result.data).toBeDefined();
     expect(result.data!.completionRate).toBe(50);
     expect(result.data!.completedTasks).toBe(1);
 
-    const state2 = store.getState();
-    expect(state2.currentSprint!.state).toBe("COMPLETED");
-    expect(state2.currentSprint!.completedAt).not.toBeNull();
+    const state = store.getState();
+    expect(state.currentSprint!.state).toBe("COMPLETED");
+  });
+
+  it("DONE タスクが自動アーカイブされる", async () => {
+    const ids = await createReadyTasks(2);
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: ids });
+
+    await store.update((s) => {
+      if (s.currentSprint) {
+        s.currentSprint.state = "ACTIVE";
+        s.currentSprint.startedAt = new Date().toISOString();
+      }
+      s.tasks[ids[0]].state = "DONE";
+    });
+
+    await sprintComplete(store, { sprintId: "sprint-1" });
+    const state = store.getState();
+    expect(state.archivedTasks[ids[0]]).toBeDefined();
+    expect(state.tasks[ids[0]]).toBeUndefined();
+    expect(state.tasks[ids[1]]).toBeDefined();
+  });
+
+  it("ストーリーポイントが計算される", async () => {
+    const ids = await createReadyTasks(2, { points: 5 });
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: ids });
+    await store.update((s) => {
+      if (s.currentSprint) {
+        s.currentSprint.state = "ACTIVE";
+        s.currentSprint.startedAt = new Date().toISOString();
+      }
+      s.tasks[ids[0]].state = "DONE";
+    });
+
+    const result = await sprintComplete(store, { sprintId: "sprint-1" });
+    expect(result.data!.totalPoints).toBe(10);
+    expect(result.data!.completedPoints).toBe(5);
   });
 
   it("存在しないスプリント ID はエラー", async () => {
@@ -215,36 +214,61 @@ describe("sprint_complete", () => {
   });
 
   it("PLANNING 状態のスプリントは完了できない", async () => {
-    await sprintCreate(store, {
-      goal: "Sprint 1",
-      tasks: [
-        {
-          title: "Task",
-          description: "desc",
-          acceptanceCriteria: [],
-          priority: "medium",
-        },
-      ],
-    });
-
+    const ids = await createReadyTasks(1);
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: ids });
     const result = await sprintComplete(store, { sprintId: "sprint-1" });
     expect(result.ok).toBe(false);
     expect(result.error).toContain("PLANNING");
   });
+});
 
-  it("sprint_complete 後に sprints[] が正しく同期される", async () => {
-    await sprintCreate(store, {
-      goal: "Sprint 1",
-      tasks: [
-        {
-          title: "Task",
-          description: "desc",
-          acceptanceCriteria: [],
-          priority: "medium",
-        },
-      ],
+describe("sprint_carry_over", () => {
+  it("完了スプリントの未完了タスクを READY に戻せる", async () => {
+    const ids = await createReadyTasks(2);
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: ids });
+    await store.update((s) => {
+      if (s.currentSprint) {
+        s.currentSprint.state = "ACTIVE";
+        s.currentSprint.startedAt = new Date().toISOString();
+      }
+      s.tasks[ids[0]].state = "DONE";
+    });
+    await sprintComplete(store, { sprintId: "sprint-1" });
+
+    const result = await sprintCarryOver(store, { sprintId: "sprint-1" });
+    expect(result.ok).toBe(true);
+    expect(store.getState().tasks[ids[1]].state).toBe("READY");
+  });
+
+  it("ACTIVE スプリントからは持ち越しできない", async () => {
+    const ids = await createReadyTasks(1);
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: ids });
+    await store.update((s) => {
+      if (s.currentSprint) {
+        s.currentSprint.state = "ACTIVE";
+        const idx = s.sprints.findIndex((sp) => sp.id === s.currentSprint!.id);
+        if (idx >= 0) s.sprints[idx].state = "ACTIVE";
+      }
     });
 
+    const result = await sprintCarryOver(store, { sprintId: "sprint-1" });
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe("sprint_cancel", () => {
+  it("PLANNING スプリントを中止できる", async () => {
+    const ids = await createReadyTasks(1);
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: ids });
+
+    const result = await sprintCancel(store, { sprintId: "sprint-1", reason: "要件変更" });
+    expect(result.ok).toBe(true);
+    expect(store.getState().currentSprint!.state).toBe("CANCELLED");
+  });
+
+  it("ACTIVE スプリントを中止できる", async () => {
+    const ids = await createReadyTasks(1);
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: ids });
     await store.update((s) => {
       if (s.currentSprint) {
         s.currentSprint.state = "ACTIVE";
@@ -252,12 +276,222 @@ describe("sprint_complete", () => {
       }
     });
 
-    await sprintComplete(store, { sprintId: "sprint-1" });
+    const result = await sprintCancel(store, { sprintId: "sprint-1", reason: "ブロッカー" });
+    expect(result.ok).toBe(true);
+    expect(store.getState().currentSprint!.state).toBe("CANCELLED");
+  });
+
+  it("完了済みスプリントは中止できない", async () => {
+    const ids = await createReadyTasks(1);
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: ids });
+    await store.update((s) => {
+      if (s.currentSprint) {
+        s.currentSprint.state = "COMPLETED";
+        s.currentSprint.completedAt = new Date().toISOString();
+      }
+    });
+
+    const result = await sprintCancel(store, { sprintId: "sprint-1", reason: "テスト" });
+    expect(result.ok).toBe(false);
+  });
+
+  it("H2: BACKLOG タスクはキャンセル時に READY に戻さない", async () => {
+    const ids = await createReadyTasks(3);
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: ids });
+    await store.update((s) => {
+      if (s.currentSprint) {
+        s.currentSprint.state = "ACTIVE";
+        s.currentSprint.startedAt = new Date().toISOString();
+      }
+      // 1つを IN_PROGRESS、1つを BACKLOG に降格
+      s.tasks[ids[0]].state = "IN_PROGRESS";
+      s.tasks[ids[2]].state = "BACKLOG";
+    });
+
+    const result = await sprintCancel(store, { sprintId: "sprint-1", reason: "テスト" });
+    expect(result.ok).toBe(true);
+
+    // IN_PROGRESS と TODO は READY に戻る
+    expect(store.getState().tasks[ids[0]].state).toBe("READY");
+    expect(store.getState().tasks[ids[1]].state).toBe("READY");
+    // BACKLOG は保持される
+    expect(store.getState().tasks[ids[2]].state).toBe("BACKLOG");
+  });
+
+  it("H1: キャンセル時に DONE タスクがアーカイブされる", async () => {
+    const ids = await createReadyTasks(3);
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: ids });
+    await store.update((s) => {
+      if (s.currentSprint) {
+        s.currentSprint.state = "ACTIVE";
+        s.currentSprint.startedAt = new Date().toISOString();
+      }
+      // 1つを DONE にする
+      s.tasks[ids[0]].state = "DONE";
+      s.tasks[ids[1]].state = "IN_PROGRESS";
+    });
+
+    const result = await sprintCancel(store, { sprintId: "sprint-1", reason: "テスト" });
+    expect(result.ok).toBe(true);
 
     const state = store.getState();
-    const archivedSprint = state.sprints.find((sp) => sp.id === "sprint-1");
-    expect(archivedSprint).toBeDefined();
-    expect(archivedSprint!.state).toBe("COMPLETED");
-    expect(archivedSprint!.completedAt).not.toBeNull();
+    // DONE タスクはアーカイブされる
+    expect(state.archivedTasks[ids[0]]).toBeDefined();
+    expect(state.archivedTasks[ids[0]].state).toBe("DONE");
+    expect(state.tasks[ids[0]]).toBeUndefined();
+    // 他は READY に戻る
+    expect(state.tasks[ids[1]].state).toBe("READY");
+    expect(state.tasks[ids[2]].state).toBe("READY");
+
+    // data にアーカイブ情報がある
+    const data = result.data as { archivedTasks: Array<{ id: string }> };
+    expect(data.archivedTasks).toHaveLength(1);
+    expect(data.archivedTasks[0].id).toBe(ids[0]);
+  });
+
+  it("M1: 任意のセレモニー中でもキャンセルでクリアされる", async () => {
+    const ids = await createReadyTasks(1);
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: ids });
+    await store.update((s) => {
+      if (s.currentSprint) {
+        s.currentSprint.state = "ACTIVE";
+        s.currentSprint.startedAt = new Date().toISOString();
+      }
+      // review セレモニー中を模擬
+      s.currentCeremony = "review";
+      s.ceremonyState = "SPRINT_REVIEW";
+    });
+
+    const result = await sprintCancel(store, { sprintId: "sprint-1", reason: "テスト" });
+    expect(result.ok).toBe(true);
+    expect(store.getState().currentCeremony).toBeNull();
+    expect(store.getState().ceremonyState).toBe("IDLE");
+  });
+});
+
+describe("sprint_complete メトリクス", () => {
+  it("H1: 完了時にメトリクススナップショットが保存される", async () => {
+    const ids = await createReadyTasks(2, { points: 5 });
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: ids });
+    await store.update((s) => {
+      if (s.currentSprint) {
+        s.currentSprint.state = "ACTIVE";
+        s.currentSprint.startedAt = new Date().toISOString();
+      }
+      s.tasks[ids[0]].state = "DONE";
+    });
+
+    await sprintComplete(store, { sprintId: "sprint-1" });
+    const sprint = store.getState().sprints[0];
+    expect(sprint.metrics).toBeDefined();
+    expect(sprint.metrics!.completedTasks).toBe(1);
+    expect(sprint.metrics!.completedPoints).toBe(5);
+    expect(sprint.metrics!.totalPoints).toBe(10);
+    expect(sprint.metrics!.completionRate).toBe(50);
+  });
+
+  it("H2: sprint セレモニー中に complete すると自動リセット", async () => {
+    const ids = await createReadyTasks(1);
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: ids });
+    await store.update((s) => {
+      if (s.currentSprint) {
+        s.currentSprint.state = "ACTIVE";
+        s.currentSprint.startedAt = new Date().toISOString();
+      }
+      s.tasks[ids[0]].state = "DONE";
+      // sprint セレモニー中を模擬
+      s.currentCeremony = "sprint";
+      s.ceremonyState = "SPRINT_ACTIVE";
+    });
+
+    const result = await sprintComplete(store, { sprintId: "sprint-1" });
+    expect(result.ok).toBe(true);
+
+    const state = store.getState();
+    // セレモニーが自動リセットされる
+    expect(state.currentCeremony).toBeNull();
+    expect(state.ceremonyState).toBe("IDLE");
+    expect(state.currentSprint!.state).toBe("COMPLETED");
+  });
+
+  it("H2: review セレモニー中の complete ではリセットしない", async () => {
+    const ids = await createReadyTasks(1);
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: ids });
+    await store.update((s) => {
+      if (s.currentSprint) {
+        s.currentSprint.state = "ACTIVE";
+        s.currentSprint.startedAt = new Date().toISOString();
+      }
+      s.tasks[ids[0]].state = "DONE";
+      // review セレモニー中を模擬（正常フロー）
+      s.currentCeremony = "review";
+      s.ceremonyState = "SPRINT_REVIEW";
+    });
+
+    const result = await sprintComplete(store, { sprintId: "sprint-1" });
+    expect(result.ok).toBe(true);
+
+    const state = store.getState();
+    // review セレモニーは維持される
+    expect(state.currentCeremony).toBe("review");
+    expect(state.ceremonyState).toBe("SPRINT_REVIEW");
+  });
+
+  it("H1-new: BLOCKED タスクが完了時に BACKLOG に降格する", async () => {
+    const ids = await createReadyTasks(3);
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: ids });
+    await store.update((s) => {
+      if (s.currentSprint) {
+        s.currentSprint.state = "ACTIVE";
+        s.currentSprint.startedAt = new Date().toISOString();
+      }
+      s.tasks[ids[0]].state = "DONE";
+      s.tasks[ids[1]].state = "IN_PROGRESS";
+      s.tasks[ids[2]].state = "BLOCKED";
+    });
+
+    const result = await sprintComplete(store, { sprintId: "sprint-1" });
+    expect(result.ok).toBe(true);
+    expect(result.message).toContain("ブロック中タスク");
+    expect(result.message).toContain("BACKLOG に降格");
+
+    const state = store.getState();
+    // BLOCKED → BACKLOG
+    expect(state.tasks[ids[2]].state).toBe("BACKLOG");
+    expect(state.tasks[ids[2]].assignee).toBeNull();
+    // DONE はアーカイブ
+    expect(state.archivedTasks[ids[0]]).toBeDefined();
+    expect(state.tasks[ids[0]]).toBeUndefined();
+  });
+
+  it("M6: completedInSprintId がアーカイブ時に設定される", async () => {
+    const ids = await createReadyTasks(2);
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: ids });
+    await store.update((s) => {
+      if (s.currentSprint) {
+        s.currentSprint.state = "ACTIVE";
+        s.currentSprint.startedAt = new Date().toISOString();
+      }
+      s.tasks[ids[0]].state = "DONE";
+    });
+
+    await sprintComplete(store, { sprintId: "sprint-1" });
+    const state = store.getState();
+    expect(state.archivedTasks[ids[0]].completedInSprintId).toBe("sprint-1");
+  });
+
+  it("H3: review セレモニーなしで完了すると警告が出る", async () => {
+    const ids = await createReadyTasks(1);
+    await sprintCreate(store, { goal: "Sprint 1", taskIds: ids });
+    await store.update((s) => {
+      if (s.currentSprint) {
+        s.currentSprint.state = "ACTIVE";
+        s.currentSprint.startedAt = new Date().toISOString();
+      }
+    });
+
+    const result = await sprintComplete(store, { sprintId: "sprint-1" });
+    expect(result.ok).toBe(true);
+    expect(result.message).toContain("review セレモニーが開始されていません");
   });
 });

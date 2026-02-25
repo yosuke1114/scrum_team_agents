@@ -6,7 +6,8 @@ import type {
   CeremonyState,
   ScrumState,
 } from "../types.js";
-import { CEREMONY_STATE_MAP, VALID_TRANSITIONS } from "../types.js";
+import { CEREMONY_STATE_MAP, VALID_TRANSITIONS, ceremonyStateToPhase } from "../types.js";
+import { syncCurrentSprint } from "./sprint.js";
 
 function buildCeremonySummary(state: ScrumState): string {
   const parts: string[] = [];
@@ -64,12 +65,15 @@ export async function ceremonyStart(
     };
   }
 
-  // review 前提チェック
+  // review 前提チェック（ACTIVE または CANCELLED）
   if (input.type === "review") {
-    if (!s.currentSprint || s.currentSprint.state !== "ACTIVE") {
+    if (
+      !s.currentSprint ||
+      (s.currentSprint.state !== "ACTIVE" && s.currentSprint.state !== "CANCELLED")
+    ) {
       return {
         ok: false,
-        error: "アクティブなスプリントがありません。",
+        error: "アクティブまたは中止済みのスプリントがありません。",
       };
     }
   }
@@ -78,11 +82,13 @@ export async function ceremonyStart(
   if (input.type === "retro") {
     if (
       !s.currentSprint ||
-      (s.currentSprint.state !== "ACTIVE" && s.currentSprint.state !== "COMPLETED")
+      (s.currentSprint.state !== "ACTIVE" &&
+        s.currentSprint.state !== "COMPLETED" &&
+        s.currentSprint.state !== "CANCELLED")
     ) {
       return {
         ok: false,
-        error: "スプリントがアクティブまたは完了状態ではありません。",
+        error: "スプリントがアクティブ、完了、または中止状態ではありません。",
       };
     }
   }
@@ -92,16 +98,17 @@ export async function ceremonyStart(
     s.currentCeremony = input.type;
     s.ceremonyState = targetState;
 
+    // Phase sync: ceremonyState → phase
+    s.phase = ceremonyStateToPhase(targetState);
+    s.phaseEnteredAt = new Date().toISOString();
+
     // sprint 開始時の追加処理
     if (input.type === "sprint" && s.currentSprint) {
       s.currentSprint.state = "ACTIVE";
       s.currentSprint.startedAt = new Date().toISOString();
 
       // sprints[] も同期コピー
-      const idx = s.sprints.findIndex((sp) => sp.id === s.currentSprint!.id);
-      if (idx >= 0) {
-        s.sprints[idx] = { ...s.currentSprint, tasks: [...s.currentSprint.tasks] };
-      }
+      syncCurrentSprint(s);
     }
   });
 
@@ -141,11 +148,17 @@ export async function ceremonyEnd(
 
     if (input.type === "retro") {
       s.ceremonyState = "IDLE";
+      s.phase = "PLAN";
+      s.phaseEnteredAt = new Date().toISOString();
     } else if (input.type === "refinement") {
       s.ceremonyState = "IDLE";
+      s.phase = "PLAN";
+      s.phaseEnteredAt = new Date().toISOString();
     }
-    // review → SPRINT_REVIEW のまま
-    // planning → PLANNING のまま
+    // ceremonyState はスプリントライフサイクルの「フェーズ」を表す。
+    // currentCeremony はその中で「今進行中のセレモニー」を表す。
+    // review 終了後も SPRINT_REVIEW フェーズは継続（retro に遷移するまで）。
+    // planning 終了後も PLANNING フェーズは継続（sprint に遷移するまで）。
   });
 
   return {

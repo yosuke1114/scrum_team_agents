@@ -1,0 +1,74 @@
+name: refinement
+description: バックログリファインメント - タスクの追加と READY 判定
+
+mcp_servers:
+  scrum-mcp:
+    command: node
+    args: ["scrum-mcp/dist/index.js"]
+    env:
+      SCRUM_STATE_FILE: ".scrum/state.json"
+
+movements:
+  - name: state-check
+    persona: scrum-master
+    edit: false
+    allowed_tools:
+      - project_status
+    instructions: |
+      `project_status` でプロジェクト状況を確認する。
+      ceremonyState が IDLE であることを確認する。
+      IDLE でなければ「先に現在のセレモニーを完了してください」と案内して停止する。
+    on_failure: halt
+
+  - name: ceremony-open
+    persona: scrum-master
+    edit: false
+    allowed_tools:
+      - ceremony_start
+    instructions: |
+      `ceremony_start` type: "refinement" を実行する。
+
+  - name: backlog-review
+    persona: product-owner
+    edit: false
+    allowed_tools:
+      - list_tasks
+      - task_create
+      - get_task
+      - github_sync
+    instructions: |
+      1. `list_tasks` state: "BACKLOG" でバックログを確認する
+      2. ユーザーと対話しながら新規タスクを追加する:
+         - `task_create` で作成（title, description, acceptanceCriteria, priority 必須）
+         - 必要なら `github_sync` action: "create" で Issue 作成
+      3. 十分なタスクが揃うまで繰り返す
+
+  - name: ready-judgment
+    persona: product-owner
+    edit: false
+    allowed_tools:
+      - list_tasks
+      - get_task
+      - task_update
+    instructions: |
+      各タスクについて READY 判定を行う:
+      1. `list_tasks` state: "BACKLOG" でバックログタスクを一覧表示
+      2. 各タスクの受入条件を `get_task` で確認
+      3. 受入条件が明確 → `task_update` state: "READY" に遷移
+      4. まだ不明確 → BACKLOG のまま残す（理由を説明）
+
+  - name: summary-and-close
+    persona: scrum-master
+    edit: false
+    allowed_tools:
+      - list_tasks
+      - ceremony_report
+      - ceremony_end
+    instructions: |
+      1. `list_tasks` state: "READY" で READY タスクを表示
+      2. `list_tasks` state: "BACKLOG" で残りのバックログを表示
+      3. `ceremony_report` type: "refinement" でサマリーを保存
+      4. `ceremony_end` type: "refinement" でセレモニーを終了
+    success_criteria:
+      - 最低1つのタスクが READY 状態であること
+      - 全タスクに受入条件が設定されていること

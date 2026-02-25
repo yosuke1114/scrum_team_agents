@@ -1,0 +1,76 @@
+name: retro
+description: レトロスペクティブ - KPT 振り返りとアクションアイテム策定
+
+mcp_servers:
+  scrum-mcp:
+    command: node
+    args: ["scrum-mcp/dist/index.js"]
+    env:
+      SCRUM_STATE_FILE: ".scrum/state.json"
+
+movements:
+  - name: state-check
+    persona: scrum-master
+    edit: false
+    allowed_tools:
+      - project_status
+    instructions: |
+      `project_status` で ceremonyState が SPRINT_REVIEW であることを確認する。
+      currentSprint が COMPLETED 状態であることを確認する。
+      条件を満たさなければ「先に /sprint-review を完了してください」と案内して停止。
+    on_failure: halt
+
+  - name: ceremony-open
+    persona: scrum-master
+    edit: false
+    allowed_tools:
+      - ceremony_start
+      - metrics_report
+    instructions: |
+      1. `ceremony_start` type: "retro" を実行
+      2. `metrics_report` でスプリントメトリクスを表示
+      3. 完了率、BLOCKED タスク数、WIP 制限の妥当性を報告
+
+  - name: kpt-facilitation
+    persona: scrum-master
+    edit: false
+    allowed_tools: []
+    instructions: |
+      ユーザーと対話して KPT を整理する:
+
+      **Keep（継続すべきこと）**
+      - 効果的だったプラクティスや習慣
+
+      **Problem（課題）**
+      - 問題になったこと、ブロッカーの原因分析
+
+      **Try（次に試すこと）**
+      - Problem を解決するための具体的なアクション
+
+  - name: action-items
+    persona: product-owner
+    edit: false
+    allowed_tools:
+      - task_create
+    instructions: |
+      KPT の Try から具体的なアクションアイテムを策定する:
+      1. 各アクションアイテムに担当者を設定
+      2. `task_create` でバックログに追加:
+         - priority: 改善の緊急度に応じて設定
+         - description に KPT の背景を記載
+
+  - name: summary-and-close
+    persona: scrum-master
+    edit: false
+    allowed_tools:
+      - ceremony_report
+      - ceremony_end
+    instructions: |
+      1. KPT のサマリーとアクションアイテムを表示
+      2. `ceremony_report` type: "retro" で KPT 結果を保存
+      3. `ceremony_end` type: "retro" でセレモニー終了（IDLE に戻る）
+      4. 「次のスプリントサイクルは /scrum または /refinement で開始してください」と案内
+    success_criteria:
+      - KPT が実施されていること
+      - 最低1つのアクションアイテムが策定されていること
+      - ceremonyState が IDLE に戻っていること

@@ -27,6 +27,7 @@ describe("StateStore", () => {
     expect(state.currentSprint).toBeNull();
     expect(state.sprints).toEqual([]);
     expect(state.tasks).toEqual({});
+    expect(state.archivedTasks).toEqual({});
     expect(state.wipLimits).toEqual({ inProgress: 2, inReview: 1 });
     expect(state.config).toEqual({ githubRepo: "", projectName: "scrum-team" });
   });
@@ -63,5 +64,67 @@ describe("StateStore", () => {
     const state = store.getState();
     expect(state.ceremonyState).toBe("IDLE");
     expect(state.currentCeremony).toBeNull();
+  });
+
+  it("getState はディープコピーを返す（参照共有しない）", async () => {
+    await store.update((s) => {
+      s.tasks["t-1"] = {
+        id: "t-1", title: "Task", description: "desc",
+        acceptanceCriteria: ["AC1"], state: "BACKLOG", priority: "high",
+        assignee: null, githubIssueNumber: null, points: null,
+        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      };
+    });
+
+    const copy1 = store.getState();
+    const copy2 = store.getState();
+    // 参照が異なること
+    expect(copy1).not.toBe(copy2);
+    expect(copy1.tasks["t-1"]).not.toBe(copy2.tasks["t-1"]);
+    // 値は同じ
+    expect(copy1.tasks["t-1"].title).toBe(copy2.tasks["t-1"].title);
+  });
+
+  it("peek は内部状態への参照を返す", () => {
+    const peeked = store.peek();
+    const peeked2 = store.peek();
+    expect(peeked).toBe(peeked2);
+  });
+
+  it("不正な JSON ファイルからはデフォルト状態で初期化される＋バックアップ作成", async () => {
+    const { writeFile, readdir } = await import("node:fs/promises");
+    const badFile = "/tmp/scrum-test-store-bad.json";
+    await writeFile(badFile, "INVALID JSON {{{", "utf-8");
+
+    const badStore = await StateStore.init(badFile);
+    const state = badStore.getState();
+    expect(state.ceremonyState).toBe("IDLE");
+    expect(state.currentCeremony).toBeNull();
+
+    // H3: 破損ファイルのバックアップが作成される
+    const files = await readdir("/tmp");
+    const backups = files
+      .filter((f) => f.startsWith("scrum-test-store-bad.json.corrupt."))
+      .map((f) => `/tmp/${f}`);
+    expect(backups.length).toBeGreaterThanOrEqual(1);
+
+    // バックアップの中身が元の破損データと一致
+    const backupContent = await readFile(backups[0], "utf-8");
+    expect(backupContent).toBe("INVALID JSON {{{");
+
+    // cleanup
+    try { await unlink(badFile); } catch { /* ignore */ }
+    for (const b of backups) {
+      try { await unlink(b); } catch { /* ignore */ }
+    }
+  });
+
+  it("update は更新後の状態コピーを返す", async () => {
+    const result = await store.update((s) => {
+      s.config.projectName = "updated";
+    });
+    expect(result.config.projectName).toBe("updated");
+    // 返り値はコピー
+    expect(result).not.toBe(store.peek());
   });
 });

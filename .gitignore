@@ -1,6 +1,10 @@
 node_modules/
 dist/
-.scrum/state.json
+**/.scrum/state.json
+**/.scrum/reports/
+**/.scrum/audit.jsonl
+**/.scrum/dashboard.md
+.tasks.json
 .DS_Store
 Thumbs.db
 *.tmp

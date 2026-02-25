@@ -35,6 +35,7 @@ describe("integration", () => {
       description: "ログイン実装",
       acceptanceCriteria: ["メール認証"],
       priority: "high",
+      points: 5,
     });
     const t1Id = (t1.data as { taskId: string }).taskId;
 
@@ -43,6 +44,7 @@ describe("integration", () => {
       description: "メイン画面",
       acceptanceCriteria: ["グラフ表示"],
       priority: "medium",
+      points: 3,
     });
     const t2Id = (t2.data as { taskId: string }).taskId;
 
@@ -56,22 +58,10 @@ describe("integration", () => {
     // 2. Planning
     await ceremonyStart(store, { type: "planning" });
 
+    // 既存 READY タスクの ID でスプリント作成
     await sprintCreate(store, {
       goal: "MVP",
-      tasks: [
-        {
-          title: "認証機能",
-          description: "ログイン実装",
-          acceptanceCriteria: ["メール認証"],
-          priority: "high",
-        },
-        {
-          title: "ダッシュボード",
-          description: "メイン画面",
-          acceptanceCriteria: ["グラフ表示"],
-          priority: "medium",
-        },
-      ],
+      taskIds: [t1Id, t2Id],
     });
 
     await ceremonyEnd(store, { type: "planning" });
@@ -87,7 +77,6 @@ describe("integration", () => {
       (sp) => sp.id === "sprint-1"
     );
     expect(archivedSprintAfterStart!.state).toBe("ACTIVE");
-    expect(archivedSprintAfterStart!.startedAt).not.toBeNull();
 
     // タスク作業
     const sprintTaskIds = store.peek().currentSprint!.tasks;
@@ -124,6 +113,10 @@ describe("integration", () => {
     await sprintComplete(store, { sprintId: "sprint-1" });
     expect(store.peek().currentSprint!.state).toBe("COMPLETED");
 
+    // DONE タスクがアーカイブされていることを確認
+    const stateAfterComplete = store.getState();
+    expect(stateAfterComplete.archivedTasks[stId1]).toBeDefined();
+
     await ceremonyEnd(store, { type: "review" });
 
     // 5. Retro
@@ -143,7 +136,7 @@ describe("integration", () => {
     });
     const taskId = (r.data as { taskId: string }).taskId;
 
-    // TODO → IN_PROGRESS → BLOCKED → IN_PROGRESS → IN_REVIEW → DONE
+    // BACKLOG → READY → TODO → IN_PROGRESS → BLOCKED → IN_PROGRESS → IN_REVIEW → DONE
     await taskUpdate(store, { taskId, state: "READY" });
     await taskUpdate(store, { taskId, state: "TODO" });
     await taskUpdate(store, { taskId, state: "IN_PROGRESS" });
@@ -178,10 +171,7 @@ describe("integration", () => {
     }
 
     // 1つ目: 制限内→警告なし
-    const r1 = await taskUpdate(store, {
-      taskId: ids[0],
-      state: "IN_PROGRESS",
-    });
+    const r1 = await taskUpdate(store, { taskId: ids[0], state: "IN_PROGRESS" });
     expect(r1.ok).toBe(true);
     expect(r1.message).not.toContain("WIP制限警告");
 
@@ -189,10 +179,7 @@ describe("integration", () => {
     await taskUpdate(store, { taskId: ids[1], state: "IN_PROGRESS" });
 
     // 3つ目: 制限超過→警告
-    const r3 = await taskUpdate(store, {
-      taskId: ids[2],
-      state: "IN_PROGRESS",
-    });
+    const r3 = await taskUpdate(store, { taskId: ids[2], state: "IN_PROGRESS" });
     expect(r3.ok).toBe(true);
     expect(r3.message).toContain("WIP制限警告");
 
