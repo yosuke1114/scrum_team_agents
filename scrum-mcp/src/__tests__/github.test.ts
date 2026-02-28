@@ -84,7 +84,7 @@ describe("github_sync", () => {
       s.tasks["task-1"] = {
         id: "task-1", title: "Test", description: "desc",
         acceptanceCriteria: ["AC1"], state: "BACKLOG", priority: "high",
-        assignee: null, githubIssueNumber: null, points: null,
+        assignee: null, githubIssueNumber: null, points: null, completedInSprintId: null,
         createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       };
     });
@@ -107,7 +107,7 @@ describe("github_sync", () => {
       s.tasks["task-1"] = {
         id: "task-1", title: "Test Task", description: "Do the thing",
         acceptanceCriteria: ["It works", "Tests pass"], state: "BACKLOG", priority: "high",
-        assignee: null, githubIssueNumber: null, points: null,
+        assignee: null, githubIssueNumber: null, points: null, completedInSprintId: null,
         createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       };
     });
@@ -128,7 +128,7 @@ describe("github_sync", () => {
       s.tasks["task-1"] = {
         id: "task-1", title: "Test", description: "desc",
         acceptanceCriteria: ["AC1"], state: "IN_PROGRESS", priority: "medium",
-        assignee: "dev", githubIssueNumber: null, points: null,
+        assignee: "dev", githubIssueNumber: null, points: null, completedInSprintId: null,
         createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       };
     });
@@ -143,7 +143,7 @@ describe("github_sync", () => {
       s.tasks["task-1"] = {
         id: "task-1", title: "Test", description: "desc",
         acceptanceCriteria: ["AC1"], state: "IN_PROGRESS", priority: "medium",
-        assignee: "dev", githubIssueNumber: 42, points: null,
+        assignee: "dev", githubIssueNumber: 42, points: null, completedInSprintId: null,
         createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       };
     });
@@ -159,7 +159,7 @@ describe("github_sync", () => {
       s.tasks["task-1"] = {
         id: "task-1", title: "Test", description: "desc",
         acceptanceCriteria: ["AC1"], state: "DONE", priority: "low",
-        assignee: "dev", githubIssueNumber: null, points: null,
+        assignee: "dev", githubIssueNumber: null, points: null, completedInSprintId: null,
         createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       };
     });
@@ -174,7 +174,7 @@ describe("github_sync", () => {
       s.tasks["task-1"] = {
         id: "task-1", title: "Test", description: "desc",
         acceptanceCriteria: ["AC1"], state: "DONE", priority: "low",
-        assignee: "dev", githubIssueNumber: 42, points: null,
+        assignee: "dev", githubIssueNumber: 42, points: null, completedInSprintId: null,
         createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       };
     });
@@ -196,7 +196,7 @@ describe("github_sync", () => {
       s.tasks["task-1"] = {
         id: "task-1", title: "Test", description: "desc",
         acceptanceCriteria: ["AC1"], state: "DONE", priority: "low",
-        assignee: null, githubIssueNumber: 42, points: null,
+        assignee: null, githubIssueNumber: 42, points: null, completedInSprintId: null,
         createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       };
     });

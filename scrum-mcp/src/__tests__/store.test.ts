@@ -71,7 +71,7 @@ describe("StateStore", () => {
       s.tasks["t-1"] = {
         id: "t-1", title: "Task", description: "desc",
         acceptanceCriteria: ["AC1"], state: "BACKLOG", priority: "high",
-        assignee: null, githubIssueNumber: null, points: null,
+        assignee: null, githubIssueNumber: null, points: null, completedInSprintId: null,
         createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       };
     });
